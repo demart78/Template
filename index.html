@@ -160,6 +160,13 @@
   details summary { cursor: pointer; color: var(--accent2); margin-top: 8px; }
   #distillSrc { width: 100%; height: 110px; margin: 8px 0; font: 12.5px var(--mono); background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 8px; resize: vertical; }
   #distillTopic { width: 100%; margin-bottom: 8px; }
+  #chat.pulse { animation: chatPulse 1.4s ease; }
+  @keyframes chatPulse { 0% { background: rgba(217,122,74,.16); } 100% { background: transparent; } }
+  .histItem { display: flex; gap: 12px; align-items: baseline; margin: 5px 0; font-size: 13.5px; }
+  .histItem .hdate { color: var(--dim); font: 12px var(--mono); }
+  .histItem .hmode { color: var(--accent2); font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; min-width: 46px; }
+  .histItem .cname { flex: 1; }
+  .histItem .hverdict { color: var(--accent); }
 </style>
 </head>
 <body>
@@ -213,6 +220,13 @@
     <span>Author a <strong>fresh problem</strong> with AI instead of the built-in bank (original LC-medium variant; never repeats). Applies to the coach→test switch too.</span>
   </div>
 
+  <button class="primary" id="startBtn" style="width:100%;padding:12px;font-size:17px">Start session</button>
+
+  <div class="rules" id="historySec" style="display:none">
+    <strong>Recent sessions</strong>
+    <div id="historyList" style="margin-top:8px"></div>
+  </div>
+
   <div class="rules" id="librarySec">
     <strong>Pattern library</strong>
     <div id="cardList" style="margin-top:8px"><em style="color:var(--dim)">No cards yet.</em></div>
@@ -220,25 +234,28 @@
       <summary>Distill a new pattern card</summary>
       <div style="margin-top:8px">
         <input type="text" id="distillTopic" placeholder="Pattern name, e.g. 'Merge Intervals' or 'Sliding Window'">
-        <textarea id="distillSrc" placeholder="Optional: paste source material — a NeetCode video transcript (YouTube → ⋯ → Show transcript → copy), an article, or your own notes. Leave empty and Claude writes the canonical card from scratch."></textarea>
+        <input type="text" id="ytUrl" placeholder="Optional: YouTube URL (e.g. a NeetCode video) — Gemini watches it and extracts the lesson. Public videos only." style="width:100%;margin-bottom:8px">
+        <div id="geminiKeyRow" style="display:none">
+          <input type="password" id="geminiKey" placeholder="Gemini API key — needed only because you gave a YouTube URL (aistudio.google.com/apikey; stored locally)" style="width:100%;margin-bottom:8px">
+          <div class="note" style="margin:-2px 0 8px">Free tier covers ~8 hours of YouTube per day. Restrict this key to the Generative Language API in AI Studio since it lives in your browser.</div>
+        </div>
+        <textarea id="distillSrc" placeholder="Optional: paste source material — a transcript, an article, or your own notes. Combine with a YouTube URL or leave both empty and Claude writes the canonical card from scratch."></textarea>
         <button id="distillBtn">Distill card</button>
         <span id="distillStatus" style="font-size:13px;color:var(--dim);margin-left:8px"></span>
       </div>
     </details>
   </div>
 
-  <div class="rules">
-    <strong>House rules</strong>
-    <ul>
+  <details class="rules">
+    <summary style="color:var(--text)"><strong>House rules</strong></summary>
+    <ul style="margin-top:8px">
       <li>The editor is a plain <code>&lt;textarea&gt;</code> — no bracket matching, no syntax color, on purpose. Don't ask for niceties; you won't get them.</li>
       <li><strong>Talk out loud.</strong> Type your thinking into the narration box (or use the mic). Silence over ~35 seconds gets you interrupted, like a real interviewer would.</li>
       <li>The interviewer watches your code as you type and probes on specific patterns — nested loops, sketchy <code>range()</code> bounds, missing base cases — mid-thought, not at the end.</li>
       <li>You have <strong>3 hints</strong>. Each one is noted in your evaluation.</li>
       <li>Grading is at a <strong>Staff-level bar</strong>: classification speed, correctness without execution, and narration quality all count.</li>
     </ul>
-  </div>
-
-  <button class="primary" id="startBtn">Start interview</button>
+  </details>
 </div>
 
 <!-- ================= INTERVIEW ================= -->
@@ -247,6 +264,7 @@
     <span id="timer">25:00</span>
     <span id="probTitle"></span>
     <span id="hintBadge">Hints: 3 left</span>
+    <button id="soundBtn" title="Chime when the interviewer speaks (you'll be heads-down in the editor)">🔕</button>
     <button id="hintBtn">Request hint</button>
     <button id="readyBtn" style="display:none">I'm ready — start the test</button>
     <button id="submitBtn" class="primary">Submit solution</button>
@@ -284,8 +302,9 @@
   <h1>Debrief</h1>
   <div id="debriefBody"></div>
   <p style="margin-top:32px">
-    <button class="primary" id="againBtn">New interview</button>
-    <button id="copyBtn">Copy debrief</button>
+    <button class="primary" id="againBtn">New session</button>
+    <button id="cardFromSessionBtn">Distill this into a pattern card</button>
+    <button id="copyBtn">Copy report</button>
   </p>
 </div>
 
@@ -657,6 +676,32 @@ ${narr}`;
 /* ============================================================
    Chat UI
    ============================================================ */
+/* You're heads-down in the editor when the interviewer speaks —
+   make the interruption impossible to miss without being modal:
+   chat panel pulses, tab title flashes, optional chime. */
+const baseTitle = document.title;
+let titleTimer = null;
+function attention(who) {
+  const c = $("chat");
+  c.classList.remove("pulse"); void c.offsetWidth; c.classList.add("pulse");
+  document.title = "🗣 " + who + " — Bare Metal";
+  clearTimeout(titleTimer);
+  titleTimer = setTimeout(() => { document.title = baseTitle; }, 5000);
+  if (localStorage.getItem("baremetal_sound") === "1") chime();
+}
+function chime() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = "sine"; o.frequency.value = 660;
+    g.gain.setValueAtTime(.08, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(.0001, ctx.currentTime + .5);
+    o.connect(g).connect(ctx.destination);
+    o.start(); o.stop(ctx.currentTime + .5);
+    setTimeout(() => ctx.close(), 700);
+  } catch { /* audio blocked — visual cues still fire */ }
+}
+
 function addMsg(kind, text, who) {
   const div = document.createElement("div");
   div.className = "msg " + kind;
@@ -683,6 +728,7 @@ async function interviewerSpeak(trigger, extra, opts) {
     if (sess !== S.sessionId) return; // session switched while this call was in flight
     addMsg("interviewer", text, who);
     S.transcript.push({ t: elapsedStr(), kind: who.toLowerCase(), text });
+    attention(who);
   } catch (e) {
     dots.remove();
     if (sess !== S.sessionId) return;
@@ -790,7 +836,7 @@ async function startSession(mode) {
     $("readyBtn").disabled = true; $("readyBtn").textContent = "Authoring a fresh problem…";
     try { generated = await generateProblem(S.topic); }
     catch (e) { genError = e.message; }
-    btn.disabled = false; btn.textContent = "Start interview";
+    btn.disabled = false; btn.textContent = "Start session";
     $("readyBtn").disabled = false; $("readyBtn").textContent = "I'm ready — start the test";
   }
 
@@ -1148,10 +1194,12 @@ ${coach ? "Produce the full structured study report now, per your instructions."
 let lastDebriefMd = "";
 function showDebrief(md, coach) {
   lastDebriefMd = md;
+  recordSession(md, coach);
   $("interview").style.display = "none";
   $("debrief").style.display = "block";
   document.querySelector("#debrief h1").textContent = coach ? "Study Report" : "Debrief";
   $("readyBtn").disabled = false;
+  $("cardFromSessionBtn").style.display = "";
   const actions = coach
     ? "<p style='margin-bottom:18px;color:var(--dim);font-style:italic'>When the report says you're ready, start a new session in Interview mode — same topic, fresh problem, real clock.</p>"
     : "";
@@ -1159,9 +1207,38 @@ function showDebrief(md, coach) {
   window.scrollTo(0, 0);
 }
 
+$("cardFromSessionBtn").addEventListener("click", async () => {
+  const btn = $("cardFromSessionBtn");
+  btn.disabled = true; btn.textContent = "Distilling…";
+  try {
+    const p = S.problem;
+    const source = `THE PROBLEM THE CANDIDATE JUST FACED:
+${p.title}
+${p.statement}
+Examples:
+${p.examples}
+
+THE CANDIDATE'S FINAL CODE:
+${$("code").value || "(empty)"}
+
+THE GRADER'S REPORT ON THEIR PERFORMANCE:
+${lastDebriefMd}
+
+Build the card around the underlying PATTERN this problem exercises (not this specific problem), and fold the report's observed weaknesses into "Classic pitfalls" as personally emphasized items.`;
+    const title = await distillRequest(p.title, source, "distill:from-session");
+    btn.textContent = "Saved “" + title + "” ✓";
+  } catch (e) {
+    btn.textContent = "Failed — retry";
+    btn.disabled = false;
+    return;
+  }
+  setTimeout(() => { btn.textContent = "Distill this into a pattern card"; btn.disabled = false; }, 2500);
+});
+
 $("againBtn").addEventListener("click", () => {
   $("debrief").style.display = "none";
   $("setup").style.display = "block";
+  renderHistory();
 });
 $("copyBtn").addEventListener("click", () => {
   navigator.clipboard.writeText(lastDebriefMd);
@@ -1239,32 +1316,63 @@ function viewCard(card) {
   $("interview").style.display = "none";
   $("debrief").style.display = "block";
   document.querySelector("#debrief h1").textContent = card.title;
+  $("cardFromSessionBtn").style.display = "none"; // it's already a card
   $("debriefBody").innerHTML = mdToHtml(card.md);
   window.scrollTo(0, 0);
 }
 
-async function distillCard() {
-  const key = $("apiKey").value.trim();
-  if (!key) { $("distillStatus").textContent = "Enter your API key above first."; return; }
-  localStorage.setItem("baremetal_api_key", key);
-  S.apiKey = key;
-  const topic = $("distillTopic").value.trim();
-  const src = $("distillSrc").value.trim().slice(0, 80000);
-  if (!topic && !src) { $("distillStatus").textContent = "Name the pattern or paste source material."; return; }
-  $("distillBtn").disabled = true;
-  $("distillStatus").textContent = "Distilling… (can take a minute)";
-  try {
-    const data = await apiRequest({
-      model: "claude-opus-4-8",
-      max_tokens: 3000,
-      thinking: { type: "adaptive" },
-      output_config: { effort: "high" },
-      messages: [{
-        role: "user",
-        content: `Distill a coding-interview pattern into a compact study card for a Staff-level engineer rebuilding assistant-free coding muscle memory (no autocomplete, no execution, plain-text editor, think-aloud interviews).
+/* Gemini watches a YouTube video (public URLs, no download needed) and
+   returns dense study notes, which then feed the Claude distiller. */
+async function geminiWatch(url, key) {
+  const t0 = now();
+  dbg("→ Gemini watch", url);
+  // gemini-flash-latest tracks the current GA Flash model (3.5 Flash as of mid-2026),
+  // so this doesn't rot when Google rotates model versions.
+  const res = await fetch(
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=" + encodeURIComponent(key),
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { fileData: { fileUri: url } },
+            { text: `This is a coding-interview tutorial video. Extract thorough study notes:
+1. The pattern/algorithm being taught, and the teacher's memorable framings or analogies — quote catchy phrasing verbatim.
+2. The full code solution shown on screen, transcribed exactly as written.
+3. Each example the teacher traces, and how the variables/state evolve step by step.
+4. Every pitfall or "people get this wrong" moment called out.
+5. The complexity analysis as stated.
+Plain text notes. Completeness over brevity.` },
+          ],
+        }],
+      }),
+    });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    dbg("✗ Gemini", res.status, err?.error?.message || res.statusText);
+    throw new Error("Gemini " + res.status + ": " + (err?.error?.message || res.statusText));
+  }
+  const data = await res.json();
+  const text = (data.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("").trim();
+  dbg("← Gemini", (now() - t0) + "ms", text.length + " chars of notes");
+  if (!text) throw new Error("Gemini returned no notes — only PUBLIC videos work (not private/unlisted), and the free tier caps at ~8h of YouTube/day");
+  return "NOTES EXTRACTED FROM THE VIDEO (by Gemini, watching it directly):\n" + text;
+}
+
+/* Core distiller — shared by the setup-screen form and the post-debrief button. */
+async function distillRequest(topic, source, label) {
+  const data = await apiRequest({
+    model: "claude-opus-4-8",
+    max_tokens: 3000,
+    thinking: { type: "adaptive" },
+    output_config: { effort: "high" },
+    messages: [{
+      role: "user",
+      content: `Distill a coding-interview pattern into a compact study card for a Staff-level engineer rebuilding assistant-free coding muscle memory (no autocomplete, no execution, plain-text editor, think-aloud interviews).
 
 PATTERN: ${topic || "(infer it from the source material)"}
-SOURCE MATERIAL: ${src ? "\n---\n" + src + "\n---\nDistill THIS explanation — preserve any memorable framing the teacher used, correct anything wrong, and keep the card self-contained." : "(none — write the canonical card from your own knowledge)"}
+SOURCE MATERIAL: ${source ? "\n---\n" + source + "\n---\nDistill THIS explanation — preserve any memorable framing the teacher used, correct anything wrong, and keep the card self-contained." : "(none — write the canonical card from your own knowledge)"}
 
 Output markdown and nothing else, in exactly this structure:
 # <Pattern name>
@@ -1280,21 +1388,64 @@ The specific mistakes made when coding this WITHOUT AI assistance — off-by-one
 One small worked example traced through the archetype's variable state, compact steps or a small table.
 ## Drill next
 3 named problems in escalating difficulty that exercise this pattern.`,
-      }],
-    }, "distill:" + (topic || "from-source"));
-    const md = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("\n").trim();
-    const title = (md.match(/^#\s+(.+)$/m) || [])[1] || topic || "Pattern card";
-    const cards = getCards();
-    cards.push({ id: Date.now(), title, md, created: new Date().toISOString() });
-    saveCards(cards);
-    renderCardList();
-    $("distillTopic").value = ""; $("distillSrc").value = "";
-    $("distillStatus").textContent = "Saved ✓ — it's in your library above.";
+    }],
+  }, label);
+  const md = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("\n").trim();
+  const title = (md.match(/^#\s+(.+)$/m) || [])[1] || topic || "Pattern card";
+  const cards = getCards();
+  cards.push({ id: Date.now(), title, md, created: new Date().toISOString() });
+  saveCards(cards);
+  renderCardList();
+  return title;
+}
+
+async function distillCard() {
+  const key = $("apiKey").value.trim();
+  if (!key) { $("distillStatus").textContent = "Enter your API key above first."; return; }
+  localStorage.setItem("baremetal_api_key", key);
+  S.apiKey = key;
+  const topic = $("distillTopic").value.trim();
+  const ytUrl = $("ytUrl").value.trim();
+  let src = $("distillSrc").value.trim().slice(0, 80000);
+  if (!topic && !src && !ytUrl) { $("distillStatus").textContent = "Name the pattern, paste material, or give a YouTube URL."; return; }
+  $("distillBtn").disabled = true;
+  try {
+    if (ytUrl) {
+      const gkey = $("geminiKey").value.trim();
+      if (!gkey) { $("distillStatus").textContent = "A Gemini API key is needed to watch YouTube (aistudio.google.com/apikey)."; return; }
+      localStorage.setItem("baremetal_gemini_key", gkey);
+      $("distillStatus").textContent = "Gemini is watching the video… (roughly real-time-ish for short videos)";
+      const notes = await geminiWatch(ytUrl, gkey);
+      src = [notes, src].filter(Boolean).join("\n\n");
+    }
+    $("distillStatus").textContent = "Claude is distilling the card… (can take a minute)";
+    const title = await distillRequest(topic, src, "distill:" + (topic || ytUrl || "from-source"));
+    $("distillTopic").value = ""; $("distillSrc").value = ""; $("ytUrl").value = "";
+    $("distillStatus").textContent = "Saved “" + title + "” ✓ — it's in your library above.";
   } catch (e) {
     $("distillStatus").textContent = "Failed: " + e.message;
   } finally {
     $("distillBtn").disabled = false;
   }
+}
+
+/* ============================================================
+   Session history — the streak that keeps you coming back.
+   ============================================================ */
+function getHistory() { try { return JSON.parse(localStorage.getItem("baremetal_history") || "[]"); } catch { return []; } }
+function recordSession(md, coach) {
+  const verdict = (md.match(/Strong Hire|No Hire|Lean Hire|Hire|Ready for a timed test|Almost[^.\n]*|Not yet/i) || ["—"])[0];
+  const h = getHistory();
+  h.push({ when: new Date().toISOString().slice(0, 10), mode: coach ? "coach" : "test", title: S.problem.title, verdict });
+  localStorage.setItem("baremetal_history", JSON.stringify(h.slice(-40)));
+}
+function renderHistory() {
+  const h = getHistory();
+  if (!h.length) { $("historySec").style.display = "none"; return; }
+  $("historySec").style.display = "";
+  $("historyList").innerHTML = h.slice(-8).reverse().map(e =>
+    `<div class="histItem"><span class="hdate">${e.when}</span><span class="hmode">${e.mode}</span><span class="cname">${escapeHtml(e.title)}</span><span class="hverdict">${escapeHtml(e.verdict)}</span></div>`
+  ).join("");
 }
 
 /* ============================================================
@@ -1307,12 +1458,26 @@ One small worked example traced through the archetype's variable state, compact 
     $("keyStatus").textContent = "Key loaded from this browser's localStorage.";
     $("keyStatus").style.color = "var(--good)";
   }
+  const gkey = localStorage.getItem("baremetal_gemini_key");
+  if (gkey) $("geminiKey").value = gkey;
+  // Just-in-time credential ask: the Gemini key field only appears once a YouTube URL is entered.
+  $("ytUrl").addEventListener("input", () => {
+    $("geminiKeyRow").style.display = $("ytUrl").value.trim() ? "" : "none";
+  });
   $("startBtn").addEventListener("click", startFromSetup);
   $("distillBtn").addEventListener("click", distillCard);
   $("dbgClear").addEventListener("click", () => { $("debugLog").innerHTML = ""; });
+  $("soundBtn").textContent = localStorage.getItem("baremetal_sound") === "1" ? "🔔" : "🔕";
+  $("soundBtn").addEventListener("click", () => {
+    const on = localStorage.getItem("baremetal_sound") !== "1";
+    localStorage.setItem("baremetal_sound", on ? "1" : "0");
+    $("soundBtn").textContent = on ? "🔔" : "🔕";
+    if (on) chime();
+  });
   if (DBG.on) dbgPanel(true);
   renderCardList();
-  dbg("boot ok — problems in bank:", PROBLEMS.length, "cards:", getCards().length, "seen:", getSeen().length);
+  renderHistory();
+  dbg("boot ok — problems in bank:", PROBLEMS.length, "cards:", getCards().length, "seen:", getSeen().length, "history:", getHistory().length);
 })();
 </script>
 </body>

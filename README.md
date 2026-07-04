@@ -73,11 +73,31 @@ from CDN on first use):
 ## Pattern library (recognize the patterns)
 
 The setup screen has a card library. "Distill a new pattern card" takes any
-source material — a NeetCode video transcript (YouTube → ⋯ → Show transcript →
-copy/paste), an article, your own notes — or nothing at all, and produces a
+of: a **YouTube URL** (e.g. a NeetCode video), pasted source material (a
+transcript, article, or your notes), or nothing at all — and produces a
 compact study card: recognition triggers (statement phrase → pattern), a
 ≤15-line archetype to memorize, why each line exists, classic pitfalls, one
-hand-trace, and three drill problems. Cards persist in localStorage.
+hand-trace, and three drill problems. Cards persist in localStorage. After
+any session, the report screen has a one-click "Distill this into a pattern
+card" that builds the card from the problem you just faced, your code, and
+the grader's observations — your personal weaknesses become the emphasized
+pitfalls.
+
+**YouTube via Gemini:** the Gemini API accepts YouTube URLs natively as a
+`file_data` part in `generateContent` — the model watches the video directly
+(code on screen included, not just audio), extracts dense study notes, and
+Claude distills them into the card. Uses the `gemini-flash-latest` alias so
+the model doesn't rot. Constraints per Google's docs: public videos only
+(no private/unlisted), and the free tier allows ~8 hours of YouTube per day.
+The Gemini key field only appears once you enter a YouTube URL, and is only
+ever used for that; restrict the key to the Generative Language API in AI
+Studio since it lives in your browser.
+
+## Session history
+
+Every completed session (verdict or readiness call, mode, problem, date) is
+recorded locally and shown on the setup screen — the streak that keeps you
+coming back.
 
 ## Debugging the app itself
 
