@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How Bare Metal Works — a guided tour of the code</title>
+<style>
+  :root {
+    --bg: #14161a;
+    --panel: #1d2026;
+    --panel2: #23262d;
+    --border: #33373f;
+    --text: #e8e6e1;
+    --dim: #9a9890;
+    --accent: #d97a4a;
+    --accent2: #7aa2c9;
+    --paper: #f7f5ef;
+    --paper-ink: #22211d;
+    --good: #7fb069;
+    --bad: #c95c5c;
+    --code-bg: #101216;
+    --mono: "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f7f5ef;
+      --panel: #efece4;
+      --panel2: #e7e3d8;
+      --border: #d5d0c2;
+      --text: #22211d;
+      --dim: #6b6a64;
+      --accent: #b04f24;
+      --accent2: #46698c;
+      --code-bg: #edeae0;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14161a; --panel: #1d2026; --panel2: #23262d; --border: #33373f;
+    --text: #e8e6e1; --dim: #9a9890; --accent: #d97a4a; --accent2: #7aa2c9;
+    --code-bg: #101216;
+  }
+  :root[data-theme="light"] {
+    --bg: #f7f5ef; --panel: #efece4; --panel2: #e7e3d8; --border: #d5d0c2;
+    --text: #22211d; --dim: #6b6a64; --accent: #b04f24; --accent2: #46698c;
+    --code-bg: #edeae0;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 17px/1.72 Georgia, "Times New Roman", serif;
+  }
+  .wrap { max-width: 46rem; margin: 0 auto; padding: 3.5rem 1.4rem 6rem; }
+
+  header h1 {
+    font-size: 2.1rem; font-weight: normal; line-height: 1.25; margin: 0 0 .6rem;
+    text-wrap: balance;
+  }
+  header h1 em { color: var(--accent); font-style: italic; }
+  .standfirst { color: var(--dim); font-style: italic; margin: 0 0 .4rem; }
+  .meta { font: 12.5px var(--mono); color: var(--dim); }
+  .meta code { color: var(--accent2); }
+
+  .eyebrow {
+    font: 12px var(--mono); letter-spacing: .14em; text-transform: uppercase;
+    color: var(--accent); margin: 3.2rem 0 .2rem; display: flex; align-items: center; gap: .7rem;
+  }
+  .eyebrow::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+  h2 { font-size: 1.5rem; font-weight: normal; margin: .2rem 0 1rem; text-wrap: balance; }
+  h3 { font-size: 1.12rem; font-weight: normal; color: var(--accent2); margin: 2rem 0 .5rem; }
+  p { margin: .85rem 0; }
+  strong { color: var(--text); }
+  a { color: var(--accent2); }
+  ul { padding-left: 1.3rem; } li { margin: .35rem 0; }
+
+  pre {
+    background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: .9rem 1.1rem; overflow-x: auto; font: 13px/1.6 var(--mono);
+    margin: 1rem 0;
+  }
+  code { font: .85em var(--mono); background: var(--panel2); padding: .08em .35em; border-radius: 4px; }
+  pre code { background: none; padding: 0; }
+  .cmt { color: var(--dim); }
+  .kw { color: var(--accent); }
+  .fn { color: var(--accent2); }
+
+  /* ---------- diagrams ---------- */
+  .diagram {
+    display: flex; align-items: stretch; gap: .5rem; flex-wrap: wrap;
+    margin: 1.4rem 0; padding: 1.1rem; background: var(--panel);
+    border: 1px solid var(--border); border-radius: 10px;
+  }
+  .dnode {
+    flex: 1 1 8.5rem; min-width: 8.5rem; background: var(--panel2);
+    border: 1px solid var(--border); border-radius: 8px; padding: .6rem .7rem;
+    font: 12px/1.5 var(--mono); display: flex; flex-direction: column; justify-content: center;
+  }
+  .dnode b { color: var(--accent2); font-weight: bold; display: block; margin-bottom: .2rem; }
+  .dnode.hot { border-color: var(--accent); }
+  .dnode.hot b { color: var(--accent); }
+  .dnode.paper { background: var(--paper); color: var(--paper-ink); border-color: #c9c4b6; }
+  .dnode.paper b { color: #8a5a2e; }
+  .darrow {
+    align-self: center; color: var(--accent); font: bold 18px var(--mono);
+    padding: 0 .1rem; flex: 0 0 auto;
+  }
+  .dcaption { flex-basis: 100%; font: 11.5px var(--mono); color: var(--dim); margin-top: .5rem; }
+  .dstack { display: flex; flex-direction: column; gap: .5rem; flex: 1 1 8.5rem; min-width: 8.5rem; }
+
+  table { border-collapse: collapse; width: 100%; margin: 1.2rem 0; font-size: .92em; }
+  th, td { text-align: left; padding: .5rem .7rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font: 11.5px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+  td:first-child { color: var(--accent2); font-family: var(--mono); font-size: .86em; white-space: nowrap; }
+  .tablewrap { overflow-x: auto; }
+
+  .aside {
+    border-left: 3px solid var(--accent); background: var(--panel);
+    padding: .7rem 1rem; margin: 1.2rem 0; border-radius: 0 8px 8px 0;
+    font-size: .95em;
+  }
+  .aside .lbl { font: 11px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--accent); display: block; margin-bottom: .25rem; }
+
+  /* ---------- quiz ---------- */
+  .q {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 1.1rem 1.3rem; margin: 1.3rem 0;
+  }
+  .q .qnum { font: 11.5px var(--mono); letter-spacing: .1em; color: var(--accent); text-transform: uppercase; }
+  .q .qtext { margin: .4rem 0 .9rem; }
+  .q .opts { display: flex; flex-direction: column; gap: .5rem; }
+  .q button.opt {
+    font: 15px/1.5 Georgia, serif; text-align: left; cursor: pointer;
+    background: var(--panel2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px; padding: .55rem .8rem;
+  }
+  .q button.opt:hover:not(:disabled) { border-color: var(--accent2); }
+  .q button.opt:focus-visible { outline: 2px solid var(--accent2); outline-offset: 2px; }
+  .q button.opt:disabled { cursor: default; opacity: .82; }
+  .q button.opt.right { border-color: var(--good); box-shadow: inset 0 0 0 1px var(--good); opacity: 1; }
+  .q button.opt.wrong { border-color: var(--bad); box-shadow: inset 0 0 0 1px var(--bad); }
+  .q .expl { display: none; margin-top: .9rem; padding-top: .8rem; border-top: 1px dashed var(--border); font-size: .93em; color: var(--dim); }
+  .q .expl strong { color: var(--text); }
+  .q.answered .expl { display: block; }
+  #score { font: 13px var(--mono); color: var(--dim); margin-top: 1.6rem; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .q button.opt { transition: border-color .15s ease; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+<header>
+  <h1>How <em>Bare Metal</em> works</h1>
+  <p class="standfirst">A guided tour of the code: one HTML file that impersonates an interviewer, runs your Python in the browser, and refuses to autocomplete anything.</p>
+  <p class="meta">subject: <code>index.html</code> (~1,600 lines, vanilla JS) · repo: <code>demart78/Template</code> · written 2026-07-04</p>
+</header>
+
+<!-- ============================ 1 · BACKGROUND ============================ -->
+<p class="eyebrow">1 · Background</p>
+<h2>Why this program exists, and what it refuses to do</h2>
+
+<p>Coding interviews at big tech companies still happen in a shared plain-text editor: no autocomplete, no syntax highlighting, no way to run anything, and a requirement to narrate your thinking out loud while a stranger watches. Meanwhile, the day job of the person being interviewed increasingly consists of steering AI coding tools. The skills have diverged. Bare Metal exists to close that gap: it recreates the interview's hostile environment on purpose, then wraps it in the things a real interview can't give you — a coach that teaches, a debugger that shows you your program's state changing line by line, and drills that train pattern recognition directly.</p>
+
+<p>The engineering constraints shape everything you'll see in the code:</p>
+<ul>
+  <li><strong>One file, no server.</strong> The entire app is a single <code>index.html</code>. There's no build step, no npm, no backend. Every capability has to come from the browser itself or from an API the browser can call directly.</li>
+  <li><strong>Two AI vendors, called from the browser.</strong> Claude (Opus 4.8) plays the interviewer, grader, problem author, and distiller. Gemini is used for exactly one thing: natively watching YouTube videos. Both keys live in <code>localStorage</code> and requests go straight to each vendor — there is no middleman that could see them.</li>
+  <li><strong>Python execution without a Python server.</strong> Syntax checking and the step-through debugger run real CPython <em>inside the browser</em> via Pyodide (CPython compiled to WebAssembly), lazy-loaded only when first needed.</li>
+  <li><strong>The friction is the product.</strong> The editor is a bare <code>&lt;textarea&gt;</code>. This is not a missing feature; it is the feature. Every design decision distinguishes <em>productive</em> friction (keep) from <em>incidental</em> friction (remove).</li>
+</ul>
+
+<!-- ============================ 2 · INTUITION ============================ -->
+<p class="eyebrow">2 · Intuition</p>
+<h2>Three ideas carry the whole design</h2>
+
+<h3>Idea 1: The client decides <em>when</em>; the model decides <em>what</em></h3>
+
+<p>The most interesting architectural choice is how the "interviewer who interrupts you" is built. A naive design would ask the model to decide when to speak — poll it every few seconds with "anything to say?" That would be slow, expensive, and erratic. Instead, Bare Metal splits the job:</p>
+
+<div class="diagram" role="img" aria-label="Event flow: your activity feeds a watcher loop, which fires triggers, which build a snapshot payload sent to Claude, whose reply appears in chat">
+  <div class="dstack">
+    <div class="dnode paper"><b>you</b>typing code · narrating · going quiet</div>
+  </div>
+  <span class="darrow">→</span>
+  <div class="dnode hot"><b>watch() · every 4s</b>deterministic triggers:<br>silence &gt; 35s<br>regex code patterns<br>periodic check-in</div>
+  <span class="darrow">→</span>
+  <div class="dnode"><b>eventPayload()</b>trigger reason<br>elapsed time<br>code snapshot<br>narration since last turn</div>
+  <span class="darrow">→</span>
+  <div class="dnode"><b>Claude</b>persona prompt +<br>full session history</div>
+  <span class="darrow">→</span>
+  <div class="dnode hot"><b>chat</b>one short utterance,<br>pulse + title flash</div>
+  <div class="dcaption">Deterministic JavaScript decides when to interrupt (cheap, instant, predictable). The model decides what to say (contextual, adaptive). Neither does the other's job.</div>
+</div>
+
+<p>Let's make this concrete. Suppose you type <code>for i in range(len(intervals)):</code> and keep going. Within four seconds, the watcher's regex for <code>range(len(</code> matches. That trigger fires <em>once per session</em> (a <code>Set</code> remembers), builds a payload containing your full code and everything you've said since the interviewer last spoke, and sends it with a private stage direction: <em>"probe the loop bounds — off-by-one is the classic autocomplete-era failure — but only if the concern actually applies to what they wrote."</em> Claude sees your actual code and decides whether the concern applies. The interruption arrives as one or two spoken sentences, not an essay.</p>
+
+<h3>Idea 2: Two modes are one machine with different knobs</h3>
+
+<p>Coach mode and Interview mode share every line of session machinery — the same triggers, the same chat, the same editor. What differs is a handful of parameters and, crucially, the system prompt:</p>
+
+<div class="tablewrap"><table>
+  <tr><th>knob</th><th>Coach</th><th>Interview</th></tr>
+  <tr><td>clock</td><td>counts up, never ends the session</td><td>counts down; auto-submits at 0:00</td></tr>
+  <tr><td>silence tolerance</td><td>~90 seconds</td><td>~35 seconds</td></tr>
+  <tr><td>guidance</td><td>unlimited, free, may teach</td><td>3 hints; each caps the verdict ceiling</td></tr>
+  <tr><td>tracer &amp; free syntax check</td><td>available</td><td>tracer hidden; syntax check costs a hint</td></tr>
+  <tr><td>persona</td><td>coach: may name patterns, explain, review</td><td>interviewer: Socratic probes only, never code</td></tr>
+  <tr><td>final report</td><td>study report + readiness verdict</td><td>debrief + hire verdict at a Staff bar</td></tr>
+</table></div>
+
+<p>This is why the "I'm ready — start the test" button is a one-liner in the code: it just calls <code>startSession("test")</code>. Same machine, different knobs, fresh problem.</p>
+
+<h3>Idea 3: The debugger is a recording, not a live process</h3>
+
+<p>Real debuggers pause a live process. Bare Metal's step-through debugger does something simpler and, for learning, better: it runs your function to completion <em>once</em> under CPython's tracing hook, recording a snapshot of every executed line — line number, function name, and the <code>repr()</code> of every local variable. Stepping "forward" and "backward" is then just moving an index through an array of snapshots. Time travel is free because nothing is actually running.</p>
+
+<div class="diagram" role="img" aria-label="Tracer pipeline: code plus a call expression go into Pyodide, sys.settrace records steps, JSON crosses back to JavaScript, and a scrub UI replays them">
+  <div class="dnode paper"><b>your code + a call</b>merge([[1,3],[2,6]])</div>
+  <span class="darrow">→</span>
+  <div class="dnode"><b>Pyodide (WASM CPython)</b>exec your code,<br>sys.settrace on,<br>eval the call</div>
+  <span class="darrow">→</span>
+  <div class="dnode hot"><b>steps[] · max 500</b>{line, func, locals, ret}<br>one per line executed</div>
+  <span class="darrow">→</span>
+  <div class="dnode"><b>JSON → JS</b>one string crosses<br>the WASM boundary</div>
+  <span class="darrow">→</span>
+  <div class="dnode hot"><b>scrub UI</b>← / → through time,<br>changed vars highlighted</div>
+  <div class="dcaption">The 500-step cap is the infinite-loop defense: `while True: pass` produces a line event per iteration, hits the cap, and stops with a clear message instead of freezing the tab.</div>
+</div>
+
+<p>One example: trace <code>merge([[1,3],[2,6],[8,10]])</code> against a correct merge-intervals solution and you get 20 steps. Step 4 shows <code>start=1, end=3, out=[]</code>; step 5 shows <code>out=[[1, 3]]</code> with <code>out</code> highlighted because its value changed. The bug you can't see in your head becomes a frame you can point at.</p>
+
+<!-- ============================ 3 · CODE ============================ -->
+<p class="eyebrow">3 · Code</p>
+<h2>A walkthrough of the file, top to bottom</h2>
+
+<p>Everything lives in <code>index.html</code>: a <code>&lt;style&gt;</code> block, three screen <code>&lt;div&gt;</code>s (setup, interview, debrief) toggled by <code>display</code>, and one <code>&lt;script&gt;</code>. The script reads in this order:</p>
+
+<h3>Data: the problem bank and the trigger table</h3>
+
+<p><code>PROBLEMS</code> is an array of 15 objects (<code>id, topic, title, statement, examples, constraints, target</code>). <code>CODE_TRIGGERS</code> is the interruption table — each entry pairs a detector with a stage direction for the model:</p>
+
+<pre><code>{
+  id: <span class="fn">"range-len"</span>,
+  test: c =&gt; <span class="kw">/range\(\s*len\(/</span>.test(c),
+  note: <span class="fn">"Candidate wrote range(len(...)). Probe the loop bounds: off-by-one
+         is the classic autocomplete-era failure..."</span>
+}</code></pre>
+
+<p>Adding your own interruption is adding an object here. The <code>note</code> is never shown to you — it's whispered to the interviewer.</p>
+
+<h3>State: one object, plus a session fence</h3>
+
+<p>All mutable state hangs off a single object <code>S</code>: mode, topic, the current problem, clocks, hint count, the narration buffer, the transcript, and the Claude conversation history. Two fields exist purely to prevent race bugs:</p>
+
+<pre><code>sessionId: 0,  <span class="cmt">// bumped on every new session; stale API replies are dropped</span></code></pre>
+
+<p>Every async operation captures <code>S.sessionId</code> (and a reference to the <em>current</em> history array) before awaiting. If you end a coach session while a reply is still in flight, the reply comes back, notices the world has moved on, and discards itself instead of injecting a ghost message into your fresh interview:</p>
+
+<pre><code><span class="kw">const</span> hist = S.history; <span class="cmt">// bind to THIS session's history</span>
+hist.push({ role: <span class="fn">"user"</span>, content: userMsg });
+...
+<span class="kw">const</span> text = <span class="kw">await</span> callClaude(...);
+<span class="kw">if</span> (sess !== S.sessionId) <span class="kw">return</span>; <span class="cmt">// session switched mid-flight — drop it</span></code></pre>
+
+<h3>The conversation: <code>apiRequest</code> → <code>callClaude</code></h3>
+
+<p><code>apiRequest</code> is the one place that touches the network: a <code>fetch</code> to <code>api.anthropic.com/v1/messages</code> with the key, version header, and the CORS opt-in header (<code>anthropic-dangerous-direct-browser-access</code>). It logs every call — latency, input/cached/output tokens — to the debug panel. <code>callClaude</code> layers the conversation on top: it appends your event as a user turn, sends the <em>entire</em> history plus the system prompt, and appends the assistant reply. A failed call pops the user turn back off so a network blip can't poison the transcript.</p>
+
+<p>The cost trick is one line:</p>
+
+<pre><code>system: [{ type: <span class="fn">"text"</span>, text: systemPrompt(),
+           cache_control: { type: <span class="fn">"ephemeral"</span> } }],</code></pre>
+
+<p><code>systemPrompt()</code> is deterministic for a given session (persona + problem text), so every call after the first hits Anthropic's prompt cache and the big prefix bills at roughly a tenth of the normal input price. Interruptions run at <code>effort: "low"</code> for snappy replies; the final grading runs with adaptive thinking at <code>effort: "high"</code>.</p>
+
+<h3>Deciding when to speak: <code>watch()</code></h3>
+
+<p>A 4-second interval does three checks in priority order: (1) any un-fired code trigger whose regex now matches, (2) silence — no keystroke and no narration for longer than the mode's threshold, with a 90-second cooldown so it doesn't nag, (3) a gentle check-in if six minutes pass with nothing else. Whichever fires calls <code>interviewerSpeak(trigger, note)</code>, which assembles the payload:</p>
+
+<pre><code>[TRIGGER: CODE PATTERN OBSERVED]
+[NOTE FOR YOU: Candidate wrote range(len(...))...]
+[ELAPSED: 08:12 / 25:00] [HINTS REMAINING: 3]
+[CODE SNAPSHOT]
+...your editor contents...
+[NARRATION SINCE LAST EXCHANGE]
+[03:41] I'm sorting by start time first...</code></pre>
+
+<p>Notice the narration buffer drains into each payload — the model always knows what you've said since it last spoke, and whether your code changed.</p>
+
+<h3>The execution sandbox: Pyodide, <code>checkSyntax</code>, and <code>TRACER_PY</code></h3>
+
+<p><code>loadPyodideOnce()</code> injects the Pyodide script tag on first use (~10&nbsp;MB, then browser-cached) and memoizes the promise; a failed load resets the memo so you can retry. Syntax checking is CPython's own <code>compile()</code> wrapped to return structured JSON: <code>{ok: false, line: 3, msg: "expected ':'"}</code>.</p>
+
+<p>The tracer is a Python program stored in a JS template string. Its heart is the trace hook:</p>
+
+<pre><code><span class="kw">def</span> <span class="fn">_tracer</span>(frame, event, arg):
+    code = frame.f_code
+    <span class="kw">if</span> code.co_filename != <span class="fn">"solution.py"</span> <span class="kw">or</span> code.co_name == <span class="fn">"&lt;module&gt;"</span>:
+        <span class="kw">return</span> <span class="kw">None</span>          <span class="cmt"># only trace YOUR functions, not machinery</span>
+    <span class="kw">if</span> event <span class="kw">in</span> (<span class="fn">"line"</span>, <span class="fn">"return"</span>):
+        _steps.append({
+            <span class="fn">"line"</span>: frame.f_lineno,
+            <span class="fn">"locals"</span>: {k: _fmt(v) <span class="kw">for</span> k, v <span class="kw">in</span> frame.f_locals.items()},
+            ...
+        })
+        <span class="kw">if</span> len(_steps) &gt;= 500:
+            <span class="kw">raise</span> _Limit()      <span class="cmt"># infinite-loop circuit breaker</span>
+    <span class="kw">return</span> _tracer</code></pre>
+
+<p>Three details worth noticing. First, the filename filter: your code is compiled with the filename <code>solution.py</code>, so the hook can ignore every frame that isn't yours. Second, the <code>&lt;module&gt;</code> exclusion: the expression that <em>calls</em> your function runs in a module-level frame whose "locals" are the entire namespace — recording it would bury the signal, so only real function frames are kept. Third, locals are stored as <em>strings</em> (<code>repr</code>, truncated at 140 chars), because live Python objects can't survive the trip across the WASM boundary — but their printed form can, as one JSON document.</p>
+
+<p>On the JavaScript side, <code>gotoStep(i)</code> is pure rendering: highlight line <code>steps[i].line</code>, list <code>steps[i].locals</code>, and mark any variable whose string differs from step <code>i−1</code> — that's the orange "this just changed" highlight, computed by nothing fancier than string comparison.</p>
+
+<h3>Generation surfaces: problems, sprints, cards</h3>
+
+<p>Three features ask Claude to produce <em>data</em> rather than conversation, and all three use structured outputs (<code>output_config.format</code> with a JSON schema) so the reply is guaranteed parseable — no regex-scraping model prose:</p>
+
+<ul>
+  <li><code>generateProblem(topic)</code> — authors an original LC-medium variant, told which titles you've seen recently (from <code>localStorage</code>) so it avoids resembling them.</li>
+  <li><code>startSprint()</code> — asks for 8 rounds of <code>{statement, options[4], answer_index, tell}</code>; the quiz UI is then a dumb renderer over that array.</li>
+  <li><code>distillRequest(topic, source)</code> — produces a pattern card in a fixed markdown skeleton. Its <code>source</code> can be pasted notes, a finished session (problem + your code + the grader's report), or notes Gemini extracted by natively watching a YouTube URL — the one place a second vendor enters, via <code>geminiWatch()</code>, which passes the video URL as a <code>file_data</code> part.</li>
+</ul>
+
+<h3>Grading: <code>submitSolution()</code></h3>
+
+<p>Submission assembles everything the grader needs to be <em>fair</em>: the final code, the complete timestamped transcript (your narration, its interruptions, hints spent), and — so it never has to guess — an objective compile result from a final automatic <code>checkSyntax</code> run: <code>PASSES</code> or <code>FAILS — SyntaxError line 7</code>. The system prompt's SUBMIT section demands a hand-trace of your code against the printed examples before any verdict is allowed. If the network fails at this moment, the machinery un-pops the payload, restarts the clocks, and lets you press submit again — a 25-minute session is never lost to one bad request.</p>
+
+<div class="aside"><span class="lbl">where to poke first</span>
+If you want to modify the app, the three arrays near the top of the script — <code>PROBLEMS</code>, <code>CODE_TRIGGERS</code>, <code>SPRINT_PATTERNS</code> — are designed as extension points. Add an entry; no other code changes needed.</div>
+
+<!-- ============================ 4 · QUIZ ============================ -->
+<p class="eyebrow">4 · Quiz</p>
+<h2>Check your understanding</h2>
+<p>Five questions, medium difficulty. Click an answer to see how you did.</p>
+
+<div class="q" data-answer="1">
+  <div class="qnum">Question 1</div>
+  <div class="qtext">You end a Coach session by clicking "I'm ready — start the test" while the coach's reply to your last trace is still in flight. Why doesn't that reply appear inside your new interview?</div>
+  <div class="opts">
+    <button class="opt">The fetch is aborted with an <code>AbortController</code> when the session ends.</button>
+    <button class="opt"><code>callClaude</code> captured a reference to the <em>old</em> history array, and <code>interviewerSpeak</code> compares its saved <code>sessionId</code> to the current one — a stale reply writes to the dead array and is never rendered.</button>
+    <button class="opt">The Anthropic API rejects the second session's requests until the first response completes.</button>
+    <button class="opt">Replies are queued and only rendered when the chat panel is idle.</button>
+  </div>
+  <div class="expl"><strong>The session fence.</strong> Nothing is cancelled — cancellation is fiddly and unnecessary. Instead, every async path binds <code>const hist = S.history</code> and <code>const sess = S.sessionId</code> <em>before</em> awaiting. <code>startSession()</code> replaces the history array and bumps the id, so the late reply pushes into an unreachable array and the <code>sess !== S.sessionId</code> guard skips rendering. The stale work completes harmlessly.</div>
+</div>
+
+<div class="q" data-answer="2">
+  <div class="qnum">Question 2</div>
+  <div class="qtext">You trace <code>f()</code> where the body is <code>while True: pass</code>. What happens?</div>
+  <div class="opts">
+    <button class="opt">The browser tab freezes until you kill it — Pyodide runs on the main thread.</button>
+    <button class="opt">Pyodide's built-in watchdog kills execution after 10 seconds.</button>
+    <button class="opt">Each loop iteration emits a line event into <code>_steps</code>; at 500 entries the hook raises <code>_Limit</code>, execution stops, and the UI reports a likely infinite loop.</button>
+    <button class="opt">The trace silently records only the first iteration and returns normally.</button>
+  </div>
+  <div class="expl"><strong>The circuit breaker is the trace itself.</strong> <code>sys.settrace</code> fires the hook on <em>every executed line</em>, so a spinning loop feeds its own shutdown: 500 events arrive in milliseconds, <code>_Limit</code> propagates out of <code>eval</code>, the <code>finally</code> clears the trace hook, and JavaScript gets <code>{error: "stopped at 500 steps..."}</code>. Pyodide does run on the main thread — which is exactly why the cap matters — but there is no built-in watchdog; option A is what <em>would</em> happen without the cap.</div>
+</div>
+
+<div class="q" data-answer="0">
+  <div class="qnum">Question 3</div>
+  <div class="qtext">The trace hook ignores frames where <code>co_name == "&lt;module&gt;"</code>. What would you see in the variables panel if it didn't?</div>
+  <div class="opts">
+    <button class="opt">The module-level frame that evaluates your call expression — its "locals" are the whole namespace, so every one of your function definitions would appear as a giant noisy pseudo-variable.</button>
+    <button class="opt">Nothing different — module frames never produce line events.</button>
+    <button class="opt">A security hole: module frames can read JavaScript state.</button>
+    <button class="opt">Duplicate entries for every step, since each line fires in both the function and module frame.</button>
+  </div>
+  <div class="expl"><strong>Signal over noise.</strong> Your call (<code>merge([[1,3],[2,6]])</code>) is evaluated in a module-level frame whose <code>f_locals</code> <em>is</em> the exec'd namespace — containing <code>merge</code> itself and anything else you defined. Recording it would put <code>&lt;function merge at 0x...&gt;</code> in the variables panel at step 1. The filter keeps only frames of functions you wrote, which is where the learning is.</div>
+</div>
+
+<div class="q" data-answer="2">
+  <div class="qnum">Question 4</div>
+  <div class="qtext">Why does the request put <code>cache_control: {type: "ephemeral"}</code> on the system prompt, and when does that cache stop helping?</div>
+  <div class="opts">
+    <button class="opt">It encrypts the persona so users can't extract it; it expires when the tab closes.</button>
+    <button class="opt">It pins the model's temperature for the session; it resets on every message.</button>
+    <button class="opt">Anthropic caches the prompt prefix; since <code>systemPrompt()</code> is byte-identical across a session's many event-driven calls, all but the first bill cached-input rates — until a new session changes the problem/persona text, which is a new prefix and a fresh cache write.</button>
+    <button class="opt">It tells the API to keep the conversation server-side so history doesn't need resending.</button>
+  </div>
+  <div class="expl"><strong>Prefix caching.</strong> The Messages API is stateless — full history is resent every call — but the provider caches the rendered prefix at the breakpoint. An interruption-heavy session makes 10–15 calls sharing the same big system prompt; caching turns most of that repeated input into ~10%-price reads. Any byte change in the prefix (new problem, switched mode → different <code>systemPrompt()</code> output) means a cache miss, which is why each <em>session</em> pays one full-price write and then coasts.</div>
+</div>
+
+<div class="q" data-answer="3">
+  <div class="qnum">Question 5</div>
+  <div class="qtext">Code-pattern triggers fire at most once per session (<code>firedTriggers</code> is a <code>Set</code>). What actually goes wrong without that?</div>
+  <div class="opts">
+    <button class="opt">The regexes are expensive and would slow typing.</button>
+    <button class="opt">Claude would refuse duplicate prompts with a 429.</button>
+    <button class="opt">Nothing — the payload dedupes identical snapshots anyway.</button>
+    <button class="opt"><code>watch()</code> re-runs every 4 seconds and your <code>range(len(...))</code> is still in the editor, so the same trigger would re-fire every tick — an interviewer stuck in a loop asking about the same line, burning tokens each time.</button>
+  </div>
+  <div class="expl"><strong>Triggers are level-detectors, not edge-detectors.</strong> The regex tests the <em>current</em> editor contents, which still match 4 seconds later. Without the <code>Set</code>, the condition stays true and the probe repeats forever. Marking each trigger as fired converts a level ("this pattern exists") into an edge ("this pattern was first observed") — the same reason hardware interrupts get acknowledged.</div>
+</div>
+
+<p id="score"></p>
+
+<p style="margin-top:2.5rem;color:var(--dim);font-style:italic">Now go read the real thing — <code>index.html</code> in the repo. It's one file, and after this tour it should read like a map you've already walked.</p>
+</div>
+
+<script>
+(function () {
+  var answered = 0, right = 0;
+  var qs = document.querySelectorAll(".q");
+  qs.forEach(function (q) {
+    var ans = parseInt(q.dataset.answer, 10);
+    var opts = q.querySelectorAll("button.opt");
+    opts.forEach(function (btn, i) {
+      btn.addEventListener("click", function () {
+        if (q.classList.contains("answered")) return;
+        q.classList.add("answered");
+        opts.forEach(function (b) { b.disabled = true; });
+        opts[ans].classList.add("right");
+        if (i === ans) { right++; } else { btn.classList.add("wrong"); }
+        answered++;
+        var s = document.getElementById("score");
+        s.textContent = "score: " + right + "/" + answered + (answered === qs.length
+          ? (right === qs.length ? " — clean sweep." : " — the explanations above cover the gaps.") : "");
+      });
+    });
+  });
+})();
+</script>
+</body>
+</html>

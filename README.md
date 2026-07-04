@@ -222,6 +222,15 @@ browser's "clear site data").
 
 ---
 
+## Guided code tour
+
+Want to understand the implementation before touching it?
+[`docs/code-tour.html`](docs/code-tour.html) is a self-contained explainer —
+background, the three ideas that carry the design, a top-to-bottom code
+walkthrough, and a five-question quiz. Open it in a browser (GitHub shows the
+raw file; clone and double-click, or use
+[htmlpreview](https://htmlpreview.github.io/?https://github.com/demart78/Template/blob/master/docs/code-tour.html)).
+
 ## Under the hood (for tinkering)
 
 Everything is in `index.html` (~1,600 lines, vanilla JS, no framework):
