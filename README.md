@@ -10,6 +10,19 @@ Built for engineers whose daily Python is written with Claude Code / Cursor /
 Copilot and who need to rebuild "code author" muscle memory for a shared-notebook
 interview.
 
+## Two modes
+
+- **Coach mode (prepare).** Untimed. The AI becomes a coach: it can name the
+  pattern family, explain *why* an approach fits, review your code line by
+  line, and give unlimited guidance — but it makes you attempt first, and it
+  drills the meta-skills (state your bounds, trace by hand, say the complexity
+  out loud). It tells you when you look ready. Ending a practice session
+  produces a **study report** with a readiness verdict and drill prescriptions.
+- **Interview mode (test).** The strict simulation: countdown clock, 3-hint
+  budget, Socratic probes only, Staff-bar debrief with a hire verdict. Flip
+  into it any time from Coach mode with the **"I'm ready — start the test"**
+  button — same topic, fresh problem, real clock, no warm-up.
+
 ## What it does
 
 - **Plain-text editor, on purpose.** The one mercy is that Tab inserts four

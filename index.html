@@ -155,6 +155,15 @@
     <div id="keyStatus"></div>
   </div>
 
+  <div class="field">
+    <label>Mode</label>
+    <select id="modeSel">
+      <option value="coach">Coach — untimed practice; teaches patterns, unlimited guidance</option>
+      <option value="test">Interview — timed, strict, graded at a Staff bar</option>
+    </select>
+    <div class="note">Start in Coach to drill a topic. When you're ready, one button switches you into a timed, graded Interview on a fresh problem — same topic, no warm-up.</div>
+  </div>
+
   <div class="row">
     <div class="field">
       <label>Topic</label>
@@ -199,6 +208,7 @@
     <span id="probTitle"></span>
     <span id="hintBadge">Hints: 3 left</span>
     <button id="hintBtn">Request hint</button>
+    <button id="readyBtn" style="display:none">I'm ready — start the test</button>
     <button id="submitBtn" class="primary">Submit solution</button>
   </div>
   <div id="main">
@@ -395,8 +405,12 @@ const CODE_TRIGGERS = [
    ============================================================ */
 const S = {
   apiKey: null,
+  mode: "test",          // "coach" | "test"
+  topic: "any",
+  sessionId: 0,          // bumped on every new session; stale API replies are dropped
   problem: null,
   totalSec: 1500,
+  elapsedSec: 0,
   remainSec: 1500,
   timerHandle: null,
   watchHandle: null,
@@ -419,19 +433,22 @@ const S = {
 const $ = id => document.getElementById(id);
 const now = () => Date.now();
 const fmt = s => String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
-const elapsedStr = () => fmt(S.totalSec - S.remainSec) + " / " + fmt(S.totalSec);
+const elapsedStr = () => S.mode === "coach"
+  ? fmt(S.elapsedSec) + " elapsed (untimed practice)"
+  : fmt(S.elapsedSec) + " / " + fmt(S.totalSec);
 
 /* ============================================================
    Anthropic API — raw fetch, browser-direct
    ============================================================ */
 async function callClaude(userMsg, { maxTokens = 400, effort = "low", thinking = false } = {}) {
-  S.history.push({ role: "user", content: userMsg });
+  const hist = S.history; // bind to THIS session's history — a session switch mid-flight must not pollute the new one
+  hist.push({ role: "user", content: userMsg });
   const body = {
     model: "claude-opus-4-8",
     max_tokens: maxTokens,
     output_config: { effort },
     system: [{ type: "text", text: systemPrompt(), cache_control: { type: "ephemeral" } }],
-    messages: S.history,
+    messages: hist,
   };
   if (thinking) body.thinking = { type: "adaptive" };
 
@@ -447,21 +464,19 @@ async function callClaude(userMsg, { maxTokens = 400, effort = "low", thinking =
   });
 
   if (!res.ok) {
-    S.history.pop(); // don't poison history with a failed turn
+    hist.pop(); // don't poison history with a failed turn
     const err = await res.json().catch(() => ({}));
     throw new Error(res.status + ": " + (err?.error?.message || res.statusText));
   }
   const data = await res.json();
   const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("\n").trim();
-  S.history.push({ role: "assistant", content: data.content });
+  hist.push({ role: "assistant", content: data.content });
   return text;
 }
 
 function systemPrompt() {
   const p = S.problem;
-  return `You are a senior engineer at a top-tier tech company conducting a live coding interview. The candidate is a Staff-level (L6) engineer whose day job is cloud architecture and agentic AI systems — strong conceptual knowledge, but rusty at writing raw algorithmic Python without AI assistance. They are practicing for a real interview: shared plain-text editor, no execution, ~25 minutes, LC-medium, and they must think out loud.
-
-THE PROBLEM YOU ARE ADMINISTERING
+  const problemBlock = `THE PROBLEM ON THE TABLE
 Title: ${p.title}
 Statement: ${p.statement}
 Examples:
@@ -469,10 +484,42 @@ ${p.examples}
 Constraints: ${p.constraints}
 Complexity target: ${p.target}
 
-HOW THIS SESSION WORKS
-You receive event-driven updates, each containing: a trigger reason, elapsed time, a snapshot of the candidate's code, and their narration since your last message. You reply with ONE short interviewer utterance (1-3 sentences, spoken voice, no markdown headers). You are interrupting mid-thought like a real interviewer — not delivering essays.
+THE CANDIDATE
+A Staff-level (L6) engineer whose day job is cloud architecture and agentic AI systems — strong conceptual knowledge (they design knowledge graphs; they can't necessarily write BFS cold), but rusty at raw algorithmic Python without AI assistance. They are preparing for a real interview: shared plain-text editor, no execution, ~25 minutes, LC-medium, think-aloud required.
 
-YOUR CONDUCT
+HOW THIS SESSION WORKS
+You receive event-driven updates, each containing: a trigger reason, elapsed time, a snapshot of their code, and their narration since your last message. Reply with ONE short spoken utterance (no markdown headers) unless the trigger is SUBMIT.`;
+
+  if (S.mode === "coach") {
+    return `You are a warm but exacting interview coach — a senior engineer who has run hundreds of loops — in an UNTIMED PRACTICE session. Your job is to build the candidate's assistant-free muscle memory: pattern recognition, correct-first-time code, and think-aloud habits.
+
+${problemBlock}
+
+YOUR CONDUCT (COACH MODE)
+- Teaching is allowed here — this is the difference from interview mode. You may name the pattern family, explain WHY an approach fits, walk through the reasoning behind an archetype, and point at specific lines of their code.
+- But make them attempt first. Elicit their classification and plan before confirming or correcting. Never type a full solution into their head unprompted — if they explicitly ask to see the idiomatic solution AFTER a genuine attempt, you may sketch its shape in words (key data structure, loop structure, the one tricky line) rather than dumping code.
+- Drill the meta-skills constantly: make them state loop bounds precisely, trace an example by hand, say the complexity out loud, and verify before declaring done. These are exactly what autocomplete atrophied.
+- When the trigger is a CODE PATTERN, the update includes a private note. Use it as a teaching moment: explain the risk in one sentence, then ask them to reason through whether it applies to their code.
+- When the trigger is SILENCE, gently re-engage — ask what they're weighing. Long thought is fine in practice; unverbalized thought is not.
+- When the trigger is a GUIDANCE REQUEST, give real help calibrated to their attempt so far — a concept, an analogy to their systems work (e.g. "this is event ordering, like your Pub/Sub pipelines"), or a narrowed question. Guidance is unlimited here and costs nothing.
+- When the trigger is a DIRECT QUESTION, answer it fully and honestly.
+- Keep utterances short (2-4 sentences). This is a conversation, not a lecture.
+- Periodically assess readiness out loud: when their narration is crisp and the code is converging without help, say so and suggest they hit "I'm ready — start the test".
+
+STUDY REPORT
+When the trigger is SUBMIT, produce a structured markdown study report:
+## Readiness — Ready for a timed test / Almost — one more drill / Not yet, with a one-paragraph justification tied to evidence from this session.
+## What you drilled — the pattern(s) covered and what clicked.
+## Correctness of final attempt — hand-trace their final code against the examples; show exactly where it works or breaks.
+## Gaps to close — the specific mechanical weaknesses seen (bounds, base cases, tracing discipline, narration lapses), each with a one-line drill prescription.
+## Next step — the single highest-value thing to do next, and which topic/difficulty their timed test should be.`;
+  }
+
+  return `You are a senior engineer at a top-tier tech company conducting a live coding interview. This is TEST MODE: timed, strict, graded.
+
+${problemBlock}
+
+YOUR CONDUCT (INTERVIEW MODE)
 - NEVER write code for the candidate. Never dictate an algorithm. Socratic probes only.
 - Calibrate probe difficulty to their narration quality: if narration is crisp and correct, push harder (edge cases, complexity proofs, follow-up variants). If they are floundering, narrow the question rather than giving answers.
 - The bar is Staff-level: you expect fast problem classification, correct code without execution, and clear reasoning. Hold that bar.
@@ -484,6 +531,7 @@ YOUR CONDUCT
 - When the trigger is TIME WARNING, tell them the time and what you'd want to see before the end.
 - Occasionally (not every message) acknowledge good narration explicitly — that behavior is what they're training.
 - Stay in character. No meta-commentary about being an AI, no bullet lists, no code blocks in your speech.
+- Keep utterances to 1-3 sentences. You are interrupting mid-thought like a real interviewer — not delivering essays.
 
 FINAL EVALUATION
 When the trigger is SUBMIT, drop the terseness and produce a full structured debrief in markdown (this one message may be long):
@@ -493,7 +541,7 @@ When the trigger is SUBMIT, drop the terseness and produce a full structured deb
 ## Communication — quality of think-aloud narration: classification speed, whether they narrated decisions or went silent, whether they verified before declaring done. Quote their actual narration where useful.
 ## Autocomplete scars — specific moments where dependence on AI tooling showed (waiting, vague variable naming, off-by-one guesses, unverified bounds).
 ## Next drill — the single most valuable thing to practice next, and whether their next session should be easier, same, or harder. Be concrete.
-Account for hints used (${"each hint caps the ceiling roughly one verdict level"}) and interruptions they handled well or badly.`;
+Account for hints used (each hint caps the ceiling roughly one verdict level) and interruptions they handled well or badly.`;
 }
 
 /* Build the event payload sent as a user turn */
@@ -506,7 +554,7 @@ function eventPayload(trigger, extra) {
   const changed = code === S.codeAtLastExchange ? " (unchanged since your last message)" : "";
   S.codeAtLastExchange = code;
   return `[TRIGGER: ${trigger}]${extra ? "\n[NOTE FOR YOU: " + extra + "]" : ""}
-[ELAPSED: ${elapsedStr()}] [HINTS REMAINING: ${S.hints}]
+[ELAPSED: ${elapsedStr()}] [HINTS REMAINING: ${S.mode === "coach" ? "unlimited (coach mode)" : S.hints}]
 [CODE SNAPSHOT${changed}]
 ${code || "(editor is empty)"}
 [NARRATION SINCE LAST EXCHANGE]
@@ -533,14 +581,18 @@ function addMsg(kind, text, who) {
 async function interviewerSpeak(trigger, extra, opts) {
   if (S.pendingApi || S.over) return;
   S.pendingApi = true;
-  const dots = addMsg("interviewer thinkingDots", "…", "Interviewer");
+  const sess = S.sessionId;
+  const who = S.mode === "coach" ? "Coach" : "Interviewer";
+  const dots = addMsg("interviewer thinkingDots", "…", who);
   try {
     const text = await callClaude(eventPayload(trigger, extra), opts);
     dots.remove();
-    addMsg("interviewer", text, "Interviewer");
-    S.transcript.push({ t: elapsedStr(), kind: "interviewer", text });
+    if (sess !== S.sessionId) return; // session switched while this call was in flight
+    addMsg("interviewer", text, who);
+    S.transcript.push({ t: elapsedStr(), kind: who.toLowerCase(), text });
   } catch (e) {
     dots.remove();
+    if (sess !== S.sessionId) return;
     addMsg("sys", "API error — " + e.message + (e.message.startsWith("401") ? " (check your key on the setup screen)" : ""));
   } finally {
     S.pendingApi = false;
@@ -561,22 +613,39 @@ function pickProblem(topic) {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
-function startInterview() {
+function startFromSetup() {
   const key = $("apiKey").value.trim();
   if (!key) { $("keyStatus").textContent = "API key required."; $("keyStatus").style.color = "var(--bad)"; return; }
   localStorage.setItem("baremetal_api_key", key);
   S.apiKey = key;
-  S.problem = pickProblem($("topicSel").value);
-  S.totalSec = S.remainSec = parseInt($("lenSel").value, 10) * 60;
-  S.started = true; S.over = false; S.hints = 3;
+  S.topic = $("topicSel").value;
+  S.totalSec = parseInt($("lenSel").value, 10) * 60;
+  startSession($("modeSel").value);
+}
+
+function startSession(mode) {
+  clearInterval(S.timerHandle); clearInterval(S.watchHandle);
+  if (S.micOn) S.recog.stop();
+  S.sessionId++;
+  S.mode = mode;
+  S.problem = pickProblem(S.topic);
+  S.elapsedSec = 0; S.remainSec = S.totalSec;
+  S.started = true; S.over = false; S.hints = 3; S.pendingApi = false;
   S.firedTriggers = new Set(); S.narrationBuffer = []; S.transcript = []; S.history = [];
   S.lastActivity = now(); S.lastSilenceProbe = now(); S.lastCheckin = now();
   S.codeAtLastExchange = "";
-  $("code").value = ""; $("chat").innerHTML = ""; $("hintBadge").textContent = "Hints: 3 left";
+  $("code").value = ""; $("chat").innerHTML = "";
+  $("lineCount").textContent = "0 lines";
   $("hintBtn").disabled = false; $("submitBtn").disabled = false;
 
+  const coach = mode === "coach";
+  $("hintBadge").textContent = coach ? "Guidance: unlimited" : "Hints: 3 left";
+  $("hintBtn").textContent = coach ? "Ask for guidance" : "Request hint";
+  $("submitBtn").textContent = coach ? "End session — study report" : "Submit solution";
+  $("readyBtn").style.display = coach ? "" : "none";
+
   const p = S.problem;
-  $("probTitle").textContent = p.title;
+  $("probTitle").textContent = (coach ? "PRACTICE · " : "") + p.title;
   $("problem").innerHTML =
     "<h3>" + p.title + "</h3><p>" + escapeHtml(p.statement) + "</p>" +
     "<pre>" + escapeHtml(p.examples) + "</pre>" +
@@ -591,26 +660,40 @@ function startInterview() {
   S.timerHandle = setInterval(tick, 1000);
   S.watchHandle = setInterval(watch, 4000);
 
-  addMsg("sys", "Session started. The clock is running.");
-  interviewerSpeak("SESSION START — greet the candidate briefly, confirm they can see the problem, and remind them to think out loud. Do not explain the problem for them.", null, { maxTokens: 250 });
+  addMsg("sys", coach ? "Practice session started — untimed. Drill until it's automatic." : "Session started. The clock is running.");
+  interviewerSpeak(
+    coach
+      ? "SESSION START — coach mode. Greet them briefly, ask how confident they feel about this topic, and ask for their first-instinct classification of the problem before they write anything."
+      : "SESSION START — greet the candidate briefly, confirm they can see the problem, and remind them to think out loud. Do not explain the problem for them.",
+    null, { maxTokens: 250 });
 }
 
 function tick() {
   if (S.over) return;
-  S.remainSec--;
-  updateTimer();
-  if (S.remainSec === 300 && !S.firedTriggers.has("time-warning")) {
-    S.firedTriggers.add("time-warning");
-    interviewerSpeak("TIME WARNING — 5 minutes remain");
-  }
-  if (S.remainSec <= 0) {
-    addMsg("sys", "Time. Pencils down — submitting what you have.");
-    submitSolution(true);
+  S.elapsedSec++;
+  if (S.mode === "test") {
+    S.remainSec = S.totalSec - S.elapsedSec;
+    updateTimer();
+    if (S.remainSec === 300 && !S.firedTriggers.has("time-warning")) {
+      S.firedTriggers.add("time-warning");
+      interviewerSpeak("TIME WARNING — 5 minutes remain");
+    }
+    if (S.remainSec <= 0) {
+      addMsg("sys", "Time. Pencils down — submitting what you have.");
+      submitSolution(true);
+    }
+  } else {
+    updateTimer();
   }
 }
 
 function updateTimer() {
   const t = $("timer");
+  if (S.mode === "coach") {
+    t.textContent = fmt(S.elapsedSec);
+    t.className = "";
+    return;
+  }
   t.textContent = fmt(Math.max(0, S.remainSec));
   t.className = S.remainSec <= 120 ? "crit" : S.remainSec <= 300 ? "warn" : "";
 }
@@ -631,8 +714,9 @@ function watch() {
     }
   }
 
-  // 2. silence: >35s with no typing and no narration
-  if (idleMs > 35000 && now() - S.lastSilenceProbe > 90000) {
+  // 2. silence: no typing and no narration (coach mode is more patient)
+  const silenceLimit = S.mode === "coach" ? 90000 : 35000;
+  if (idleMs > silenceLimit && now() - S.lastSilenceProbe > 90000) {
     S.lastSilenceProbe = now();
     interviewerSpeak("SILENCE — no typing or narration for " + Math.round(idleMs / 1000) + " seconds");
     return;
@@ -641,7 +725,8 @@ function watch() {
   // 3. gentle check-in every ~6 minutes if nothing else fired
   if (now() - S.lastCheckin > 360000) {
     S.lastCheckin = now();
-    interviewerSpeak("CHECK-IN — periodic; react to their current progress");
+    interviewerSpeak("CHECK-IN — periodic; react to their current progress" +
+      (S.mode === "coach" ? ", and if they look ready, say so" : ""));
   }
 }
 
@@ -649,7 +734,7 @@ function watch() {
    Narration (typed + voice)
    ============================================================ */
 function logNarration(text, viaMic) {
-  const entry = { t: fmt(S.totalSec - S.remainSec), text };
+  const entry = { t: fmt(S.elapsedSec), text };
   S.narrationBuffer.push(entry);
   S.transcript.push({ t: entry.t, kind: viaMic ? "narration(voice)" : "narration", text });
   S.lastActivity = now();
@@ -717,7 +802,13 @@ $("code").addEventListener("keydown", e => {
    Hints & submission
    ============================================================ */
 $("hintBtn").addEventListener("click", () => {
-  if (S.hints <= 0 || S.over) return;
+  if (S.over) return;
+  if (S.mode === "coach") {
+    S.transcript.push({ t: elapsedStr(), kind: "guidance-request", text: "(guidance requested)" });
+    interviewerSpeak("GUIDANCE REQUEST — coach mode; give real teaching help calibrated to their attempt so far");
+    return;
+  }
+  if (S.hints <= 0) return;
   S.hints--;
   $("hintBadge").textContent = "Hints: " + S.hints + " left";
   if (S.hints === 0) $("hintBtn").disabled = true;
@@ -725,39 +816,49 @@ $("hintBtn").addEventListener("click", () => {
   interviewerSpeak("HINT REQUEST — candidate is spending one of their hints");
 });
 
+$("readyBtn").addEventListener("click", () => {
+  if (!confirm("End practice and start a timed, graded interview on a fresh problem in the same topic?")) return;
+  startSession("test");
+});
+
 $("submitBtn").addEventListener("click", () => submitSolution(false));
 
 async function submitSolution(timedOut) {
   if (S.over) return;
   S.over = true;
+  const sess = S.sessionId;
+  const coach = S.mode === "coach";
+  const hist = S.history;
   clearInterval(S.timerHandle);
   clearInterval(S.watchHandle);
   if (S.micOn) S.recog.stop();
-  $("hintBtn").disabled = true; $("submitBtn").disabled = true;
-  addMsg("sys", "Evaluating at a Staff bar — hand-tracing your code. This takes a minute…");
+  $("hintBtn").disabled = true; $("submitBtn").disabled = true; $("readyBtn").disabled = true;
+  addMsg("sys", coach
+    ? "Wrapping up practice — building your study report. This takes a minute…"
+    : "Evaluating at a Staff bar — hand-tracing your code. This takes a minute…");
 
   const transcriptText = S.transcript
     .map(e => `[${e.t}] (${e.kind}) ${e.text}`)
     .join("\n") || "(empty — candidate never narrated)";
 
   const payload = `[TRIGGER: SUBMIT${timedOut ? " — TIME EXPIRED, auto-submitted" : ""}]
-[ELAPSED: ${elapsedStr()}] [HINTS USED: ${3 - S.hints} of 3]
+[ELAPSED: ${elapsedStr()}] [HINTS USED: ${coach ? "n/a — coach mode" : (3 - S.hints) + " of 3"}]
 [FINAL CODE]
 ${$("code").value || "(editor is empty)"}
 [FULL SESSION TRANSCRIPT — narration and your interruptions, with timestamps]
 ${transcriptText}
 
-Produce the full structured debrief now, per your instructions.`;
+${coach ? "Produce the full structured study report now, per your instructions." : "Produce the full structured debrief now, per your instructions."}`;
 
   try {
-    S.history.push({ role: "user", content: payload });
+    hist.push({ role: "user", content: payload });
     const body = {
       model: "claude-opus-4-8",
       max_tokens: 4000,
       thinking: { type: "adaptive" },
       output_config: { effort: "high" },
       system: [{ type: "text", text: systemPrompt(), cache_control: { type: "ephemeral" } }],
-      messages: S.history,
+      messages: hist,
     };
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -775,23 +876,30 @@ Produce the full structured debrief now, per your instructions.`;
     }
     const data = await res.json();
     const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("\n").trim();
-    showDebrief(text);
+    if (sess !== S.sessionId) return; // a new session started while this was in flight
+    showDebrief(text, coach);
   } catch (e) {
-    addMsg("sys", "Debrief failed — " + e.message + ". Your session is preserved; press Submit again to retry.");
-    S.history.pop();
+    if (sess !== S.sessionId) return;
+    addMsg("sys", "Report failed — " + e.message + ". Your session is preserved; press the button again to retry.");
+    hist.pop();
     S.over = false;
-    $("submitBtn").disabled = false;
+    $("submitBtn").disabled = false; $("hintBtn").disabled = S.mode === "test" && S.hints === 0; $("readyBtn").disabled = false;
     S.timerHandle = setInterval(tick, 1000);
     S.watchHandle = setInterval(watch, 4000);
   }
 }
 
 let lastDebriefMd = "";
-function showDebrief(md) {
+function showDebrief(md, coach) {
   lastDebriefMd = md;
   $("interview").style.display = "none";
   $("debrief").style.display = "block";
-  $("debriefBody").innerHTML = mdToHtml(md);
+  document.querySelector("#debrief h1").textContent = coach ? "Study Report" : "Debrief";
+  $("readyBtn").disabled = false;
+  const actions = coach
+    ? "<p style='margin-bottom:18px;color:var(--dim);font-style:italic'>When the report says you're ready, start a new session in Interview mode — same topic, fresh problem, real clock.</p>"
+    : "";
+  $("debriefBody").innerHTML = actions + mdToHtml(md);
   window.scrollTo(0, 0);
 }
 
@@ -851,7 +959,7 @@ function mdToHtml(md) {
     $("keyStatus").textContent = "Key loaded from this browser's localStorage.";
     $("keyStatus").style.color = "var(--good)";
   }
-  $("startBtn").addEventListener("click", startInterview);
+  $("startBtn").addEventListener("click", startFromSetup);
 })();
 </script>
 </body>
