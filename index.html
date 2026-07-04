@@ -1,0 +1,1883 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bare Metal — Assistant-Free Interview Trainer</title>
+<style>
+  :root {
+    --bg: #14161a;
+    --panel: #1d2026;
+    --panel2: #23262d;
+    --border: #33373f;
+    --text: #e8e6e1;
+    --dim: #9a9890;
+    --accent: #d97a4a;
+    --accent2: #7aa2c9;
+    --good: #7fb069;
+    --bad: #c95c5c;
+    --mono: "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 15px/1.5 Georgia, "Times New Roman", serif;
+    height: 100vh; overflow: hidden;
+  }
+  button {
+    font: inherit; cursor: pointer; border: 1px solid var(--border);
+    background: var(--panel2); color: var(--text);
+    padding: 7px 14px; border-radius: 6px;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: .4; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #14161a; font-weight: bold; }
+  input[type=password], input[type=text], select {
+    font: inherit; background: var(--panel2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px;
+  }
+  h1 { font-size: 26px; font-weight: normal; }
+  h1 em { color: var(--accent); }
+
+  /* ---------- setup screen ---------- */
+  #setup {
+    max-width: 640px; margin: 0 auto; padding: 48px 24px;
+    height: 100vh; overflow-y: auto;
+  }
+  #setup .tagline { color: var(--dim); margin: 8px 0 32px; font-style: italic; }
+  #setup .field { margin-bottom: 20px; }
+  #setup label { display: block; margin-bottom: 6px; color: var(--dim); font-size: 13px; letter-spacing: .06em; text-transform: uppercase; }
+  #setup input, #setup select { width: 100%; }
+  #setup .row { display: flex; gap: 12px; }
+  #setup .row .field { flex: 1; }
+  #setup .note { font-size: 13px; color: var(--dim); margin-top: 6px; }
+  #setup .rules {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0; font-size: 14px;
+  }
+  #setup .rules li { margin: 6px 0 6px 18px; }
+  #keyStatus { font-size: 13px; margin-top: 6px; }
+
+  /* ---------- interview screen ---------- */
+  #interview { display: none; height: 100vh; flex-direction: column; }
+  #topbar {
+    display: flex; align-items: center; gap: 16px;
+    padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--border);
+  }
+  #timer { font: bold 22px var(--mono); color: var(--good); min-width: 86px; }
+  #timer.warn { color: var(--accent); }
+  #timer.crit { color: var(--bad); }
+  #probTitle { font-size: 16px; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #hintBadge { font-size: 13px; color: var(--dim); }
+  #main { flex: 1; display: flex; min-height: 0; }
+
+  #left {
+    width: 44%; min-width: 380px; display: flex; flex-direction: column;
+    border-right: 1px solid var(--border); background: var(--panel);
+  }
+  #problem {
+    padding: 16px 20px; overflow-y: auto; max-height: 38%;
+    border-bottom: 1px solid var(--border); font-size: 14px;
+  }
+  #problem h3 { margin-bottom: 8px; font-weight: normal; color: var(--accent2); }
+  #problem pre {
+    font: 12.5px/1.5 var(--mono); background: var(--bg);
+    padding: 8px 10px; border-radius: 6px; margin: 8px 0; white-space: pre-wrap;
+  }
+  #problem .meta { color: var(--dim); font-size: 12.5px; margin-top: 8px; }
+
+  #chat { flex: 1; overflow-y: auto; padding: 14px 18px; display: flex; flex-direction: column; gap: 10px; }
+  .msg { max-width: 92%; padding: 9px 13px; border-radius: 10px; font-size: 14px; white-space: pre-wrap; }
+  .msg.interviewer { background: var(--panel2); border: 1px solid var(--border); align-self: flex-start; }
+  .msg.interviewer .who { color: var(--accent); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; display: block; margin-bottom: 3px; }
+  .msg.you { background: #2a3440; align-self: flex-end; }
+  .msg.you .who { color: var(--accent2); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; display: block; margin-bottom: 3px; }
+  .msg.sys { color: var(--dim); font-size: 12.5px; font-style: italic; background: none; padding: 2px 4px; align-self: center; }
+  .msg.thinkingDots { color: var(--dim); font-style: italic; background: none; }
+
+  #narrationBar {
+    display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--border);
+    background: var(--panel); align-items: flex-end;
+  }
+  #narration {
+    flex: 1; resize: none; height: 58px;
+    font: 14px/1.4 inherit; background: var(--panel2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
+  }
+  #micBtn.on { background: var(--bad); border-color: var(--bad); color: #fff; }
+
+  /* The whole point: a punishingly plain editor */
+  #right { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #editorHead {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 14px; background: #efece4; color: #6b6a64;
+    font: 12px var(--mono); border-bottom: 1px solid #d8d4c8;
+  }
+  #code {
+    flex: 1; width: 100%; resize: none; border: 0; outline: 0;
+    background: #f7f5ef; color: #191919;
+    font: 15px/1.6 var(--mono);
+    padding: 18px 22px;
+    caret-color: #191919;
+    tab-size: 4;
+  }
+  #code::selection { background: #cfd8dc; }
+
+  /* ---------- debrief ---------- */
+  #debrief {
+    display: none; height: 100vh; overflow-y: auto;
+    max-width: 860px; margin: 0 auto; padding: 40px 28px;
+  }
+  #debriefBody { margin-top: 20px; font-size: 15px; }
+  #debriefBody h2 { color: var(--accent); font-weight: normal; margin: 26px 0 10px; font-size: 21px; }
+  #debriefBody h3 { color: var(--accent2); font-weight: normal; margin: 18px 0 8px; font-size: 17px; }
+  #debriefBody p { margin: 8px 0; }
+  #debriefBody li { margin: 5px 0 5px 22px; }
+  #debriefBody code { font: 13px var(--mono); background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
+  #debriefBody pre { font: 13px/1.5 var(--mono); background: var(--panel); border: 1px solid var(--border); padding: 12px 14px; border-radius: 8px; margin: 10px 0; overflow-x: auto; }
+  #debriefBody pre code { background: none; padding: 0; }
+  #debriefBody strong { color: #fff; }
+  .spin { display: inline-block; animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ---------- debug panel ---------- */
+  #debugPanel {
+    display: none; position: fixed; right: 10px; bottom: 10px; z-index: 50;
+    width: 440px; max-height: 42vh; flex-direction: column;
+    background: rgba(10,12,14,.96); border: 1px solid var(--accent2); border-radius: 8px;
+    font: 11px/1.5 var(--mono);
+  }
+  #debugPanel header { padding: 4px 10px; color: var(--accent2); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; }
+  #debugLog { overflow-y: auto; padding: 6px 10px; white-space: pre-wrap; word-break: break-word; }
+
+  /* ---------- misc widgets ---------- */
+  #syntaxBtn { font: 11px var(--mono); padding: 2px 8px; background: #fff; color: #444; border: 1px solid #c9c4b6; border-radius: 4px; }
+  .checkline { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; font-size: 14px; }
+  .checkline input { width: auto; }
+  .cardItem { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
+  .cardItem button { padding: 3px 10px; font-size: 13px; }
+  .cardItem .cname { flex: 1; }
+  details summary { cursor: pointer; color: var(--accent2); margin-top: 8px; }
+  #distillSrc { width: 100%; height: 110px; margin: 8px 0; font: 12.5px var(--mono); background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 8px; resize: vertical; }
+  #distillTopic { width: 100%; margin-bottom: 8px; }
+  #chat.pulse { animation: chatPulse 1.4s ease; }
+  @keyframes chatPulse { 0% { background: rgba(217,122,74,.16); } 100% { background: transparent; } }
+  .histItem { display: flex; gap: 12px; align-items: baseline; margin: 5px 0; font-size: 13.5px; }
+  .histItem .hdate { color: var(--dim); font: 12px var(--mono); }
+  .histItem .hmode { color: var(--accent2); font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; min-width: 46px; }
+  .histItem .cname { flex: 1; }
+  .histItem .hverdict { color: var(--accent); }
+
+  /* ---------- step-through tracer ---------- */
+  #traceBtn { font: 11px var(--mono); padding: 2px 8px; background: #fff; color: #444; border: 1px solid #c9c4b6; border-radius: 4px; }
+  #tracePanel { height: 46%; border-top: 2px solid var(--accent2); background: var(--panel); display: none; flex-direction: column; color: var(--text); }
+  #traceBar { display: flex; gap: 8px; padding: 8px 12px; align-items: center; border-bottom: 1px solid var(--border); }
+  #traceBar label { font: 12px var(--mono); color: var(--dim); }
+  #traceCall { flex: 1; font: 13px var(--mono); }
+  #traceMain { flex: 1; display: flex; min-height: 0; }
+  #traceCode { flex: 1.2; overflow: auto; font: 12.5px/1.6 var(--mono); padding: 8px 0; border-right: 1px solid var(--border); white-space: pre; }
+  #traceCode .tline { padding: 0 10px 0 6px; }
+  #traceCode .cur { background: rgba(122,162,201,.28); border-left: 3px solid var(--accent2); padding-left: 3px; }
+  #traceCode .lno { color: var(--dim); display: inline-block; width: 30px; text-align: right; margin-right: 10px; user-select: none; }
+  #traceState { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #traceControls { display: flex; gap: 6px; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  #traceControls button { padding: 3px 10px; }
+  #tPos { font: 12px var(--mono); color: var(--dim); flex: 1; text-align: center; }
+  #traceVars { flex: 1; overflow: auto; font: 12.5px var(--mono); padding: 8px 12px; }
+  #traceVars .vrow { display: flex; gap: 10px; padding: 2px 0; }
+  #traceVars .vname { color: var(--accent2); min-width: 90px; flex-shrink: 0; }
+  #traceVars .vval { word-break: break-all; }
+  #traceVars .vchanged .vval { color: var(--accent); font-weight: bold; }
+  #traceOut { border-top: 1px solid var(--border); padding: 8px 12px; font: 12px/1.5 var(--mono); color: var(--dim); max-height: 84px; overflow: auto; white-space: pre-wrap; }
+
+  /* ---------- pattern sprint ---------- */
+  #sprint { position: fixed; inset: 0; background: var(--bg); z-index: 40; display: none; align-items: center; justify-content: center; overflow-y: auto; }
+  #sprintInner { max-width: 660px; width: 92%; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 24px 28px; }
+  #sprintHead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; color: var(--dim); font-size: 13px; }
+  #sprintQ { font-size: 16px; margin-bottom: 18px; line-height: 1.6; }
+  #sprintOpts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  #sprintOpts button { text-align: left; padding: 10px 12px; }
+  #sprintOpts button.right { border-color: var(--good); background: rgba(127,176,105,.16); }
+  #sprintOpts button.wrong { border-color: var(--bad); background: rgba(201,92,92,.16); }
+  #sprintFb { margin-top: 14px; font-size: 14px; color: var(--dim); min-height: 44px; }
+  #sprintFb strong { color: var(--text); }
+</style>
+</head>
+<body>
+
+<!-- ================= SETUP ================= -->
+<div id="setup">
+  <h1>Bare <em>Metal</em></h1>
+  <p class="tagline">A place to code and learn data structures &amp; algorithms without your AI crutches. Drill pattern recognition, step through your code variable by variable in Coach mode — then prove it under a real clock in Interview mode.</p>
+
+  <div class="field">
+    <label>Anthropic API key</label>
+    <input type="password" id="apiKey" placeholder="sk-ant-...">
+    <div class="note">Stored only in this browser's localStorage. Calls go directly from your browser to api.anthropic.com — no middleman server.</div>
+    <div id="keyStatus"></div>
+  </div>
+
+  <div class="field">
+    <label>Mode</label>
+    <select id="modeSel">
+      <option value="coach">Coach — untimed practice; teaches patterns, unlimited guidance</option>
+      <option value="test">Interview — timed, strict, graded at a Staff bar</option>
+    </select>
+    <div class="note">Start in Coach to drill a topic. When you're ready, one button switches you into a timed, graded Interview on a fresh problem — same topic, no warm-up.</div>
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label>Topic</label>
+      <select id="topicSel">
+        <option value="any">Surprise me (weighted to weak spots)</option>
+        <option value="intervals">Intervals (cold spot)</option>
+        <option value="graphs">Graphs &amp; grids</option>
+        <option value="hash">Hash tables</option>
+        <option value="strings">Strings &amp; sliding window</option>
+        <option value="sorting">Sorting &amp; pointers</option>
+        <option value="heap">Heaps &amp; selection</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Clock</label>
+      <select id="lenSel">
+        <option value="25">25 min (realistic)</option>
+        <option value="35">35 min (warm-up)</option>
+        <option value="20">20 min (pressure)</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="checkline">
+    <input type="checkbox" id="freshChk">
+    <span>Author a <strong>fresh problem</strong> with AI instead of the built-in bank (original LC-medium variant; never repeats). Applies to the coach→test switch too.</span>
+  </div>
+
+  <button class="primary" id="startBtn" style="width:100%;padding:12px;font-size:17px">Start session</button>
+
+  <div class="rules" id="sprintSec">
+    <strong>Pattern Sprint</strong> — 8 rapid rounds: read a disguised problem, name the pattern before you'd ever write code.
+    <div style="margin-top:8px">
+      <button id="sprintBtn">Start sprint</button>
+      <span id="sprintStatus" style="font-size:13px;color:var(--dim);margin-left:8px"></span>
+    </div>
+  </div>
+
+  <div class="rules" id="historySec" style="display:none">
+    <strong>Recent sessions</strong>
+    <div id="historyList" style="margin-top:8px"></div>
+  </div>
+
+  <div class="rules" id="librarySec">
+    <strong>Pattern library</strong>
+    <div id="cardList" style="margin-top:8px"><em style="color:var(--dim)">No cards yet.</em></div>
+    <details id="distillBox">
+      <summary>Distill a new pattern card</summary>
+      <div style="margin-top:8px">
+        <input type="text" id="distillTopic" placeholder="Pattern name, e.g. 'Merge Intervals' or 'Sliding Window'">
+        <input type="text" id="ytUrl" placeholder="Optional: YouTube URL (e.g. a NeetCode video) — Gemini watches it and extracts the lesson. Public videos only." style="width:100%;margin-bottom:8px">
+        <div id="geminiKeyRow" style="display:none">
+          <input type="password" id="geminiKey" placeholder="Gemini API key — needed only because you gave a YouTube URL (aistudio.google.com/apikey; stored locally)" style="width:100%;margin-bottom:8px">
+          <div class="note" style="margin:-2px 0 8px">Free tier covers ~8 hours of YouTube per day. Restrict this key to the Generative Language API in AI Studio since it lives in your browser.</div>
+        </div>
+        <textarea id="distillSrc" placeholder="Optional: paste source material — a transcript, an article, or your own notes. Combine with a YouTube URL or leave both empty and Claude writes the canonical card from scratch."></textarea>
+        <button id="distillBtn">Distill card</button>
+        <span id="distillStatus" style="font-size:13px;color:var(--dim);margin-left:8px"></span>
+      </div>
+    </details>
+  </div>
+
+  <details class="rules">
+    <summary style="color:var(--text)"><strong>House rules</strong></summary>
+    <ul style="margin-top:8px">
+      <li>The editor is a plain <code>&lt;textarea&gt;</code> — no bracket matching, no syntax color, on purpose. Don't ask for niceties; you won't get them.</li>
+      <li><strong>Talk out loud.</strong> Type your thinking into the narration box (or use the mic). Silence over ~35 seconds gets you interrupted, like a real interviewer would.</li>
+      <li>The interviewer watches your code as you type and probes on specific patterns — nested loops, sketchy <code>range()</code> bounds, missing base cases — mid-thought, not at the end.</li>
+      <li>You have <strong>3 hints</strong>. Each one is noted in your evaluation.</li>
+      <li>Grading is at a <strong>Staff-level bar</strong>: classification speed, correctness without execution, and narration quality all count.</li>
+    </ul>
+  </details>
+</div>
+
+<!-- ================= INTERVIEW ================= -->
+<div id="interview">
+  <div id="topbar">
+    <span id="timer">25:00</span>
+    <span id="probTitle"></span>
+    <span id="hintBadge">Hints: 3 left</span>
+    <button id="soundBtn" title="Chime when the interviewer speaks (you'll be heads-down in the editor)">🔕</button>
+    <button id="hintBtn">Request hint</button>
+    <button id="readyBtn" style="display:none">I'm ready — start the test</button>
+    <button id="submitBtn" class="primary">Submit solution</button>
+  </div>
+  <div id="main">
+    <div id="left">
+      <div id="problem"></div>
+      <div id="chat"></div>
+      <div id="narrationBar">
+        <textarea id="narration" placeholder="Think out loud here — full sentences. Enter to log; Shift+Enter for newline. Prefix with ? to ask the interviewer directly."></textarea>
+        <button id="micBtn" title="Voice narration (Chrome)">🎙</button>
+      </div>
+    </div>
+    <div id="right">
+      <div id="editorHead">
+        <span>solution.py — plain text. no autocomplete is coming.</span>
+        <span style="display:flex;gap:10px;align-items:center">
+          <button id="traceBtn" style="display:none" title="Step through your code line by line against a real input, watching every variable (coach mode only).">Step through</button>
+          <button id="syntaxBtn" title="Compile under real CPython (Pyodide). Free in coach mode; costs a hint in interview mode.">Check syntax</button>
+          <span id="lineCount">0 lines</span>
+        </span>
+      </div>
+      <textarea id="code" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"
+        placeholder="# Write Python. Trace it by hand — nothing here will run it for you."></textarea>
+      <div id="tracePanel">
+        <div id="traceBar">
+          <label>call:</label>
+          <input type="text" id="traceCall" placeholder="e.g.  merge([[1,3],[2,6],[8,10]])   — your function, a real input">
+          <button id="traceRun" class="primary">Trace</button>
+          <button id="traceClose">✕</button>
+        </div>
+        <div id="traceMain">
+          <div id="traceCode"></div>
+          <div id="traceState">
+            <div id="traceControls">
+              <button id="tStart" title="First step">⏮</button>
+              <button id="tPrev" title="Back (←)">◀</button>
+              <span id="tPos">run a trace to begin</span>
+              <button id="tNext" title="Forward (→)">▶</button>
+              <button id="tEnd" title="Last step">⏭</button>
+            </div>
+            <div id="traceVars"></div>
+            <div id="traceOut"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= DEBRIEF ================= -->
+<div id="sprint">
+  <div id="sprintInner">
+    <div id="sprintHead"><span id="sprintScore"></span><button id="sprintQuit">✕ quit</button></div>
+    <div id="sprintQ"></div>
+    <div id="sprintOpts"></div>
+    <div id="sprintFb"></div>
+    <p style="margin-top:16px"><button id="sprintNext" class="primary" style="display:none">Next round</button></p>
+  </div>
+</div>
+
+<div id="debugPanel">
+  <header><span>debug — Ctrl+Shift+D to toggle (or open with ?debug=1)</span><span id="dbgClear" style="cursor:pointer">clear</span></header>
+  <div id="debugLog"></div>
+</div>
+
+<div id="debrief">
+  <h1>Debrief</h1>
+  <div id="debriefBody"></div>
+  <p style="margin-top:32px">
+    <button class="primary" id="againBtn">New session</button>
+    <button id="cardFromSessionBtn">Distill this into a pattern card</button>
+    <button id="copyBtn">Copy report</button>
+  </p>
+</div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   Problem bank — LC-medium, ~25-30 line solutions, tagged to
+   the topics in the prep plan. Intervals is weighted as the
+   cold spot when topic = "any".
+   ============================================================ */
+const PROBLEMS = [
+  {
+    id: "merge-intervals", topic: "intervals", title: "Merge Intervals",
+    statement: "Given an array of intervals where intervals[i] = [start_i, end_i], merge all overlapping intervals and return an array of the non-overlapping intervals that cover all the intervals in the input.",
+    examples: "merge([[1,3],[2,6],[8,10],[15,18]]) -> [[1,6],[8,10],[15,18]]\nmerge([[1,4],[4,5]]) -> [[1,5]]",
+    constraints: "1 <= len(intervals) <= 10^4. Intervals are not sorted.",
+    target: "O(n log n) time."
+  },
+  {
+    id: "non-overlapping", topic: "intervals", title: "Non-overlapping Intervals",
+    statement: "Given an array of intervals, return the minimum number of intervals you need to remove to make the rest of the intervals non-overlapping. Intervals that only touch at a point (e.g. [1,2] and [2,3]) are NOT overlapping.",
+    examples: "erase([[1,2],[2,3],[3,4],[1,3]]) -> 1\nerase([[1,2],[1,2],[1,2]]) -> 2",
+    constraints: "1 <= len(intervals) <= 10^5.",
+    target: "O(n log n) time, O(1) extra space after sort."
+  },
+  {
+    id: "insert-interval", topic: "intervals", title: "Insert Interval",
+    statement: "You are given a list of non-overlapping intervals sorted by start, and a new interval. Insert the new interval into the list so that the result is still sorted and non-overlapping (merge if necessary). Return the resulting list.",
+    examples: "insert([[1,3],[6,9]], [2,5]) -> [[1,5],[6,9]]\ninsert([[1,2],[3,5],[6,7],[8,10],[12,16]], [4,8]) -> [[1,2],[3,10],[12,16]]",
+    constraints: "0 <= len(intervals) <= 10^4.",
+    target: "O(n) time — do NOT re-sort."
+  },
+  {
+    id: "meeting-rooms-2", topic: "intervals", title: "Meeting Rooms II",
+    statement: "Given an array of meeting time intervals [start, end), return the minimum number of conference rooms required to hold all meetings.",
+    examples: "minRooms([[0,30],[5,10],[15,20]]) -> 2\nminRooms([[7,10],[2,4]]) -> 1",
+    constraints: "1 <= len(intervals) <= 10^4.",
+    target: "O(n log n) time."
+  },
+  {
+    id: "num-islands", topic: "graphs", title: "Number of Islands",
+    statement: "Given an m x n 2D grid of '1's (land) and '0's (water), return the number of islands. An island is surrounded by water and formed by connecting adjacent land cells horizontally or vertically.",
+    examples: "grid = [['1','1','0','0'],\n        ['1','1','0','0'],\n        ['0','0','1','0'],\n        ['0','0','0','1']]\nnumIslands(grid) -> 3",
+    constraints: "1 <= m, n <= 300.",
+    target: "O(m*n) time."
+  },
+  {
+    id: "rotting-oranges", topic: "graphs", title: "Rotting Oranges",
+    statement: "In an m x n grid, each cell is 0 (empty), 1 (fresh orange), or 2 (rotten orange). Every minute, any fresh orange 4-directionally adjacent to a rotten orange becomes rotten. Return the minimum minutes until no cell has a fresh orange, or -1 if impossible.",
+    examples: "rot([[2,1,1],[1,1,0],[0,1,1]]) -> 4\nrot([[2,1,1],[0,1,1],[1,0,1]]) -> -1",
+    constraints: "1 <= m, n <= 10.",
+    target: "O(m*n) time. Think about which traversal fits 'minutes elapse simultaneously'."
+  },
+  {
+    id: "course-schedule", topic: "graphs", title: "Course Schedule",
+    statement: "There are numCourses courses labeled 0..numCourses-1. prerequisites[i] = [a, b] means you must take course b before course a. Return true if you can finish all courses (i.e., the prerequisite graph has no cycle).",
+    examples: "canFinish(2, [[1,0]]) -> True\ncanFinish(2, [[1,0],[0,1]]) -> False",
+    constraints: "1 <= numCourses <= 2000, 0 <= len(prerequisites) <= 5000.",
+    target: "O(V + E) time."
+  },
+  {
+    id: "longest-substr", topic: "strings", title: "Longest Substring Without Repeating Characters",
+    statement: "Given a string s, find the length of the longest substring without repeating characters.",
+    examples: "solve('abcabcbb') -> 3   # 'abc'\nsolve('bbbbb') -> 1\nsolve('pwwkew') -> 3   # 'wke'",
+    constraints: "0 <= len(s) <= 5 * 10^4. s may contain any printable characters.",
+    target: "O(n) time — one pass."
+  },
+  {
+    id: "min-window-ish", topic: "strings", title: "Longest Repeating Character Replacement",
+    statement: "Given a string s of uppercase letters and an integer k, you may replace at most k characters with any uppercase letter. Return the length of the longest substring containing the same letter after at most k replacements.",
+    examples: "solve('ABAB', 2) -> 4\nsolve('AABABBA', 1) -> 4",
+    constraints: "1 <= len(s) <= 10^5, 0 <= k <= len(s).",
+    target: "O(n) time."
+  },
+  {
+    id: "longest-consecutive", topic: "hash", title: "Longest Consecutive Sequence",
+    statement: "Given an unsorted array of integers nums, return the length of the longest consecutive elements sequence. Your algorithm must run in O(n) time — sorting is not allowed.",
+    examples: "solve([100,4,200,1,3,2]) -> 4   # 1,2,3,4\nsolve([0,3,7,2,5,8,4,6,0,1]) -> 9",
+    constraints: "0 <= len(nums) <= 10^5.",
+    target: "O(n) time — justify why your loop is not O(n^2)."
+  },
+  {
+    id: "subarray-sum-k", topic: "hash", title: "Subarray Sum Equals K",
+    statement: "Given an array of integers nums (positive and negative) and an integer k, return the total number of contiguous subarrays whose sum equals k.",
+    examples: "solve([1,1,1], 2) -> 2\nsolve([1,2,3], 3) -> 2",
+    constraints: "1 <= len(nums) <= 2*10^4. Values may be negative — sliding window will NOT work.",
+    target: "O(n) time."
+  },
+  {
+    id: "group-anagrams", topic: "hash", title: "Group Anagrams",
+    statement: "Given an array of strings strs, group the anagrams together. Return the groups in any order.",
+    examples: "solve(['eat','tea','tan','ate','nat','bat'])\n  -> [['eat','tea','ate'],['tan','nat'],['bat']]",
+    constraints: "1 <= len(strs) <= 10^4, 0 <= len(strs[i]) <= 100, lowercase only.",
+    target: "O(n * m) or O(n * m log m) — discuss the tradeoff of your key choice."
+  },
+  {
+    id: "sort-colors", topic: "sorting", title: "Sort Colors (Dutch National Flag)",
+    statement: "Given an array nums with values 0, 1, and 2, sort it in place so that objects of the same color are adjacent, in the order 0, 1, 2. You may not use the library sort, and the follow-up requires one pass with O(1) space.",
+    examples: "solve([2,0,2,1,1,0]) -> [0,0,1,1,2,2]",
+    constraints: "1 <= len(nums) <= 300.",
+    target: "One pass, O(1) space, in place."
+  },
+  {
+    id: "kth-largest", topic: "heap", title: "Kth Largest Element in an Array",
+    statement: "Given an integer array nums and an integer k, return the kth largest element in the array (in sorted order, not distinct). Full sort is the naive answer — the interviewer wants better.",
+    examples: "solve([3,2,1,5,6,4], 2) -> 5\nsolve([3,2,3,1,2,4,5,5,6], 4) -> 4",
+    constraints: "1 <= k <= len(nums) <= 10^5.",
+    target: "O(n log k) with a heap, or average O(n) with quickselect — pick one and defend it."
+  },
+  {
+    id: "k-closest", topic: "heap", title: "K Closest Points to Origin",
+    statement: "Given an array of points [[x1,y1],...] and an integer k, return the k points closest to the origin (0,0) by Euclidean distance, in any order.",
+    examples: "solve([[1,3],[-2,2]], 1) -> [[-2,2]]\nsolve([[3,3],[5,-1],[-2,4]], 2) -> [[3,3],[-2,4]]",
+    constraints: "1 <= k <= len(points) <= 10^4.",
+    target: "Better than O(n log n) — say why a size-k heap beats sorting everything."
+  },
+];
+
+/* ============================================================
+   Client-side code-pattern triggers. Each fires at most once
+   per session. These decide WHEN to poke Claude; Claude decides
+   WHAT to say.
+   ============================================================ */
+const CODE_TRIGGERS = [
+  {
+    id: "nested-loop",
+    test: c => /for\s+\w+\s+in[^\n]*:\s*\n(\s+)[^\n]*\n?(?:\1[^\n]*\n)*?\s+for\s+\w+\s+in/.test(c) || (c.match(/for\s+\w+\s+in/g) || []).length >= 2 && /for[\s\S]{0,200}for/.test(c),
+    note: "Candidate has written what looks like nested loops. Probe the time complexity — is O(n^2) acceptable here, or are they missing the intended approach? Don't tell them the answer."
+  },
+  {
+    id: "range-len",
+    test: c => /range\(\s*len\(/.test(c),
+    note: "Candidate wrote range(len(...)). Probe the loop bounds: off-by-one is the classic autocomplete-era failure. Ask them to state exactly what the first and last index visited will be."
+  },
+  {
+    id: "while-true",
+    test: c => /while\s+(True|1)\s*:/.test(c),
+    note: "Candidate wrote an unconditional while loop. Probe termination: what guarantees this exits?"
+  },
+  {
+    id: "recursion",
+    test: c => {
+      const m = c.match(/def\s+(\w+)\s*\(/);
+      if (!m) return false;
+      const body = c.slice(m.index + m[0].length);
+      return new RegExp("\\b" + m[1] + "\\s*\\(").test(body);
+    },
+    note: "Candidate is using recursion. Probe the base case and, if the input can be large, recursion depth limits in Python."
+  },
+  {
+    id: "mutation-while-iterating",
+    test: c => /for\s+\w+\s+in\s+(\w+)\s*:[\s\S]{0,160}\1\.(remove|pop|append)\(/.test(c),
+    note: "Candidate appears to mutate a collection while iterating over it. Probe whether that's safe here."
+  },
+  {
+    id: "sort-called",
+    test: c => /\.sort\(|sorted\(/.test(c),
+    note: "Candidate reached for sorting. Probe: what does the sort cost, what key are they sorting by, and is sorting actually necessary for the stated complexity target?"
+  },
+];
+
+/* ============================================================
+   State
+   ============================================================ */
+const S = {
+  apiKey: null,
+  mode: "test",          // "coach" | "test"
+  topic: "any",
+  fresh: false,          // AI-authored problems instead of the bank
+  sessionId: 0,          // bumped on every new session; stale API replies are dropped
+  problem: null,
+  totalSec: 1500,
+  elapsedSec: 0,
+  remainSec: 1500,
+  timerHandle: null,
+  watchHandle: null,
+  started: false,
+  over: false,
+  hints: 3,
+  lastActivity: 0,
+  lastSilenceProbe: 0,
+  lastCheckin: 0,
+  firedTriggers: new Set(),
+  pendingApi: false,
+  narrationBuffer: [],   // narration lines since last API exchange
+  transcript: [],        // full timeline: {t, kind, text}
+  history: [],           // Claude conversation: {role, content}
+  codeAtLastExchange: "",
+  recog: null,
+  micOn: false,
+};
+
+const $ = id => document.getElementById(id);
+const now = () => Date.now();
+
+/* ---------- live debug ---------- */
+const DBG = { on: new URLSearchParams(location.search).get("debug") === "1" };
+function dbg(...args) {
+  const line = args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" ");
+  console.debug("[baremetal]", ...args); // always mirrored to DevTools console
+  if (!DBG.on) return;
+  const el = $("debugLog");
+  const div = document.createElement("div");
+  div.textContent = new Date().toTimeString().slice(0, 8) + "  " + line;
+  el.appendChild(div);
+  while (el.childNodes.length > 300) el.removeChild(el.firstChild);
+  el.scrollTop = el.scrollHeight;
+}
+function dbgPanel(show) {
+  DBG.on = show;
+  $("debugPanel").style.display = show ? "flex" : "none";
+}
+document.addEventListener("keydown", e => {
+  if (e.ctrlKey && e.shiftKey && (e.key === "D" || e.key === "d")) { e.preventDefault(); dbgPanel(!DBG.on); }
+});
+const fmt = s => String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+const elapsedStr = () => S.mode === "coach"
+  ? fmt(S.elapsedSec) + " elapsed (untimed practice)"
+  : fmt(S.elapsedSec) + " / " + fmt(S.totalSec);
+
+/* ============================================================
+   Anthropic API — raw fetch, browser-direct
+   ============================================================ */
+/* Low-level request. Used by the session conversation, problem generation, and the distiller. */
+async function apiRequest(body, label) {
+  const t0 = now();
+  dbg("→ API", label, "model=" + body.model, "max_tokens=" + body.max_tokens);
+  let res;
+  try {
+    res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": S.apiKey,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true",
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    dbg("✗ API", label, "network failure:", e.message, (now() - t0) + "ms");
+    throw e;
+  }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    dbg("✗ API", label, res.status, err?.error?.message || res.statusText, (now() - t0) + "ms");
+    throw new Error(res.status + ": " + (err?.error?.message || res.statusText));
+  }
+  const data = await res.json();
+  const u = data.usage || {};
+  dbg("← API", label, (now() - t0) + "ms",
+    "in=" + (u.input_tokens ?? "?"), "cached=" + (u.cache_read_input_tokens ?? 0), "out=" + (u.output_tokens ?? "?"),
+    "stop=" + data.stop_reason);
+  return data;
+}
+
+async function callClaude(userMsg, { maxTokens = 400, effort = "low", thinking = false } = {}) {
+  const hist = S.history; // bind to THIS session's history — a session switch mid-flight must not pollute the new one
+  hist.push({ role: "user", content: userMsg });
+  const body = {
+    model: "claude-opus-4-8",
+    max_tokens: maxTokens,
+    output_config: { effort },
+    system: [{ type: "text", text: systemPrompt(), cache_control: { type: "ephemeral" } }],
+    messages: hist,
+  };
+  if (thinking) body.thinking = { type: "adaptive" };
+
+  let data;
+  try {
+    data = await apiRequest(body, userMsg.slice(0, 60).replace(/\n.*/s, ""));
+  } catch (e) {
+    hist.pop(); // don't poison history with a failed turn
+    throw e;
+  }
+  const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("\n").trim();
+  hist.push({ role: "assistant", content: data.content });
+  return text;
+}
+
+function systemPrompt() {
+  const p = S.problem;
+  const problemBlock = `THE PROBLEM ON THE TABLE
+Title: ${p.title}
+Statement: ${p.statement}
+Examples:
+${p.examples}
+Constraints: ${p.constraints}
+Complexity target: ${p.target}
+
+THE CANDIDATE
+A Staff-level (L6) engineer whose day job is cloud architecture and agentic AI systems — strong conceptual knowledge (they design knowledge graphs; they can't necessarily write BFS cold), but rusty at raw algorithmic Python without AI assistance. They are preparing for a real interview: shared plain-text editor, no execution, ~25 minutes, LC-medium, think-aloud required.
+
+HOW THIS SESSION WORKS
+You receive event-driven updates, each containing: a trigger reason, elapsed time, a snapshot of their code, and their narration since your last message. Reply with ONE short spoken utterance (no markdown headers) unless the trigger is SUBMIT.`;
+
+  if (S.mode === "coach") {
+    return `You are a warm but exacting interview coach — a senior engineer who has run hundreds of loops — in an UNTIMED PRACTICE session. Your job is to build the candidate's assistant-free muscle memory: pattern recognition, correct-first-time code, and think-aloud habits.
+
+${problemBlock}
+
+YOUR CONDUCT (COACH MODE)
+- Teaching is allowed here — this is the difference from interview mode. You may name the pattern family, explain WHY an approach fits, walk through the reasoning behind an archetype, and point at specific lines of their code.
+- But make them attempt first. Elicit their classification and plan before confirming or correcting. Never type a full solution into their head unprompted — if they explicitly ask to see the idiomatic solution AFTER a genuine attempt, you may sketch its shape in words (key data structure, loop structure, the one tricky line) rather than dumping code.
+- Drill the meta-skills constantly: make them state loop bounds precisely, trace an example by hand, say the complexity out loud, and verify before declaring done. These are exactly what autocomplete atrophied.
+- When the trigger is a CODE PATTERN, the update includes a private note. Use it as a teaching moment: explain the risk in one sentence, then ask them to reason through whether it applies to their code.
+- When the trigger is SILENCE, gently re-engage — ask what they're weighing. Long thought is fine in practice; unverbalized thought is not.
+- When the trigger is a GUIDANCE REQUEST, give real help calibrated to their attempt so far — a concept, an analogy to their systems work (e.g. "this is event ordering, like your Pub/Sub pipelines"), or a narrowed question. Guidance is unlimited here and costs nothing.
+- The practice environment has a step-through tracer (they can run their function on an input and scrub through every line watching locals change; you'll see a narration note when they use it). Coach the discipline around it: PREDICT first, then trace to confirm — "what do you expect left to be after the first iteration? Now run it and check." If they trace before forming a hypothesis, call that out gently; the interview has no tracer.
+- When the trigger is a DIRECT QUESTION, answer it fully and honestly.
+- Keep utterances short (2-4 sentences). This is a conversation, not a lecture.
+- Periodically assess readiness out loud: when their narration is crisp and the code is converging without help, say so and suggest they hit "I'm ready — start the test".
+
+STUDY REPORT
+When the trigger is SUBMIT, produce a structured markdown study report:
+## Readiness — Ready for a timed test / Almost — one more drill / Not yet, with a one-paragraph justification tied to evidence from this session.
+## What you drilled — the pattern(s) covered and what clicked.
+## Correctness of final attempt — hand-trace their final code against the examples; show exactly where it works or breaks.
+## Gaps to close — the specific mechanical weaknesses seen (bounds, base cases, tracing discipline, narration lapses), each with a one-line drill prescription.
+## Next step — the single highest-value thing to do next, and which topic/difficulty their timed test should be.`;
+  }
+
+  return `You are a senior engineer at a top-tier tech company conducting a live coding interview. This is TEST MODE: timed, strict, graded.
+
+${problemBlock}
+
+YOUR CONDUCT (INTERVIEW MODE)
+- NEVER write code for the candidate. Never dictate an algorithm. Socratic probes only.
+- Calibrate probe difficulty to their narration quality: if narration is crisp and correct, push harder (edge cases, complexity proofs, follow-up variants). If they are floundering, narrow the question rather than giving answers.
+- The bar is Staff-level: you expect fast problem classification, correct code without execution, and clear reasoning. Hold that bar.
+- When the trigger is SILENCE, prompt them to verbalize — do not advance the problem for them.
+- When the trigger is a CODE PATTERN, the update includes a private note about what to probe. Use it, but phrase it as a question about THEIR code, and only if the concern actually applies to what they wrote — if their code already handles it, acknowledge briefly and move on or probe something better.
+- When the trigger is a HINT REQUEST, give the smallest useful nudge — a question or an observation, never a solution step spelled out. Note that hints cost them.
+- When the trigger is a DIRECT QUESTION, answer as an interviewer would: clarify problem constraints freely, deflect requests to solve it for them.
+- When the trigger is CHECK-IN, react to their current state: if on track, a brief acknowledgment or a forward-looking question; if stuck or drifting, redirect.
+- When the trigger is TIME WARNING, tell them the time and what you'd want to see before the end.
+- Occasionally (not every message) acknowledge good narration explicitly — that behavior is what they're training.
+- Stay in character. No meta-commentary about being an AI, no bullet lists, no code blocks in your speech.
+- Keep utterances to 1-3 sentences. You are interrupting mid-thought like a real interviewer — not delivering essays.
+
+FINAL EVALUATION
+When the trigger is SUBMIT, drop the terseness and produce a full structured debrief in markdown (this one message may be long):
+## Verdict — one of: Strong Hire / Hire / Lean Hire / No Hire (at a Staff bar), one-paragraph justification.
+## Correctness — trace their final code against the provided examples BY HAND, line by line where it matters. State plainly whether it works, and show the exact input where it breaks if it doesn't.
+## Complexity — what they achieved vs the target, and whether they stated it correctly out loud.
+## Communication — quality of think-aloud narration: classification speed, whether they narrated decisions or went silent, whether they verified before declaring done. Quote their actual narration where useful.
+## Autocomplete scars — specific moments where dependence on AI tooling showed (waiting, vague variable naming, off-by-one guesses, unverified bounds).
+## Next drill — the single most valuable thing to practice next, and whether their next session should be easier, same, or harder. Be concrete.
+Account for hints used (each hint caps the ceiling roughly one verdict level) and interruptions they handled well or badly.`;
+}
+
+/* Build the event payload sent as a user turn */
+function eventPayload(trigger, extra) {
+  const code = $("code").value;
+  const narr = S.narrationBuffer.length
+    ? S.narrationBuffer.map(n => `[${n.t}] ${n.text}`).join("\n")
+    : "(no narration since your last message — they have been quiet)";
+  S.narrationBuffer = [];
+  const changed = code === S.codeAtLastExchange ? " (unchanged since your last message)" : "";
+  S.codeAtLastExchange = code;
+  return `[TRIGGER: ${trigger}]${extra ? "\n[NOTE FOR YOU: " + extra + "]" : ""}
+[ELAPSED: ${elapsedStr()}] [HINTS REMAINING: ${S.mode === "coach" ? "unlimited (coach mode)" : S.hints}]
+[CODE SNAPSHOT${changed}]
+${code || "(editor is empty)"}
+[NARRATION SINCE LAST EXCHANGE]
+${narr}`;
+}
+
+/* ============================================================
+   Chat UI
+   ============================================================ */
+/* You're heads-down in the editor when the interviewer speaks —
+   make the interruption impossible to miss without being modal:
+   chat panel pulses, tab title flashes, optional chime. */
+const baseTitle = document.title;
+let titleTimer = null;
+function attention(who) {
+  const c = $("chat");
+  c.classList.remove("pulse"); void c.offsetWidth; c.classList.add("pulse");
+  document.title = "🗣 " + who + " — Bare Metal";
+  clearTimeout(titleTimer);
+  titleTimer = setTimeout(() => { document.title = baseTitle; }, 5000);
+  if (localStorage.getItem("baremetal_sound") === "1") chime();
+}
+function chime() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = "sine"; o.frequency.value = 660;
+    g.gain.setValueAtTime(.08, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(.0001, ctx.currentTime + .5);
+    o.connect(g).connect(ctx.destination);
+    o.start(); o.stop(ctx.currentTime + .5);
+    setTimeout(() => ctx.close(), 700);
+  } catch { /* audio blocked — visual cues still fire */ }
+}
+
+function addMsg(kind, text, who) {
+  const div = document.createElement("div");
+  div.className = "msg " + kind;
+  if (who) {
+    const w = document.createElement("span");
+    w.className = "who"; w.textContent = who;
+    div.appendChild(w);
+  }
+  div.appendChild(document.createTextNode(text));
+  $("chat").appendChild(div);
+  $("chat").scrollTop = $("chat").scrollHeight;
+  return div;
+}
+
+async function interviewerSpeak(trigger, extra, opts) {
+  if (S.pendingApi || S.over) return;
+  S.pendingApi = true;
+  const sess = S.sessionId;
+  const who = S.mode === "coach" ? "Coach" : "Interviewer";
+  const dots = addMsg("interviewer thinkingDots", "…", who);
+  try {
+    const text = await callClaude(eventPayload(trigger, extra), opts);
+    dots.remove();
+    if (sess !== S.sessionId) return; // session switched while this call was in flight
+    addMsg("interviewer", text, who);
+    S.transcript.push({ t: elapsedStr(), kind: who.toLowerCase(), text });
+    attention(who);
+  } catch (e) {
+    dots.remove();
+    if (sess !== S.sessionId) return;
+    addMsg("sys", "API error — " + e.message + (e.message.startsWith("401") ? " (check your key on the setup screen)" : ""));
+  } finally {
+    S.pendingApi = false;
+  }
+}
+
+/* ============================================================
+   Session lifecycle
+   ============================================================ */
+/* ---------- no-repeat tracking ---------- */
+function getSeen() { try { return JSON.parse(localStorage.getItem("baremetal_seen") || "[]"); } catch { return []; } }
+function markSeen(key) {
+  const seen = getSeen().filter(k => k !== key);
+  seen.push(key);
+  localStorage.setItem("baremetal_seen", JSON.stringify(seen.slice(-60)));
+}
+
+function pickProblem(topic) {
+  let pool = PROBLEMS;
+  if (topic !== "any") {
+    pool = PROBLEMS.filter(p => p.topic === topic);
+  } else {
+    // weight the cold spot: intervals problems appear twice in the lottery
+    pool = PROBLEMS.concat(PROBLEMS.filter(p => p.topic === "intervals"));
+  }
+  const seen = getSeen();
+  const unseen = pool.filter(p => !seen.includes(p.id));
+  const usable = unseen.length ? unseen : pool; // bank exhausted for this topic → allow repeats
+  dbg("pickProblem", topic, "pool=" + pool.length, "unseen=" + unseen.length);
+  return usable[Math.floor(Math.random() * usable.length)];
+}
+
+/* ---------- AI-authored fresh problems ---------- */
+async function generateProblem(topic) {
+  const topicDesc = topic === "any"
+    ? "one of: intervals, graphs/grids, hash tables, strings/sliding window, sorting/pointers, heaps (bias toward intervals — it's the candidate's weak spot)"
+    : topic;
+  const recent = getSeen().slice(-20).join(", ") || "(none)";
+  const data = await apiRequest({
+    model: "claude-opus-4-8",
+    max_tokens: 1500,
+    output_config: {
+      effort: "high",
+      format: {
+        type: "json_schema",
+        schema: {
+          type: "object",
+          properties: {
+            title: { type: "string" },
+            statement: { type: "string" },
+            examples: { type: "string" },
+            constraints: { type: "string" },
+            target: { type: "string" },
+          },
+          required: ["title", "statement", "examples", "constraints", "target"],
+          additionalProperties: false,
+        },
+      },
+    },
+    messages: [{
+      role: "user",
+      content: `Author ONE original coding-interview problem on the topic: ${topicDesc}.
+
+Requirements:
+- LeetCode-medium difficulty, solvable in <= 30 lines of clean Python within 25 minutes by a well-prepared candidate, WITHOUT running code.
+- An ORIGINAL variant — a fresh scenario/framing, not a verbatim restatement of a famous problem (a disguised classic pattern is exactly right; a copy is not).
+- Unambiguous statement. Include edge-case-revealing detail (empty input? touching-not-overlapping? negative numbers?) explicitly in the statement or constraints.
+- "examples": 2-3 worked examples as plain text lines in the form  f(input) -> output  with a brief # comment where helpful.
+- "constraints": realistic input bounds that make the intended complexity necessary.
+- "target": the intended time/space complexity, phrased as a bar (e.g. "O(n log n) time — full sort of X is acceptable, re-sorting Y is not").
+- Avoid resembling these recently used problems: ${recent}`,
+    }],
+  }, "generateProblem");
+  const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("").trim();
+  const p = JSON.parse(text);
+  p.id = "gen-" + p.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40);
+  p.topic = topic;
+  dbg("generated problem:", p.title);
+  return p;
+}
+
+function startFromSetup() {
+  const key = $("apiKey").value.trim();
+  if (!key) { $("keyStatus").textContent = "API key required."; $("keyStatus").style.color = "var(--bad)"; return; }
+  localStorage.setItem("baremetal_api_key", key);
+  S.apiKey = key;
+  S.topic = $("topicSel").value;
+  S.fresh = $("freshChk").checked;
+  S.totalSec = parseInt($("lenSel").value, 10) * 60;
+  startSession($("modeSel").value);
+}
+
+async function startSession(mode) {
+  clearInterval(S.timerHandle); clearInterval(S.watchHandle);
+  if (S.micOn) S.recog.stop();
+
+  // Fresh problems are authored BEFORE the session resets, so a failure leaves us on a usable screen.
+  let generated = null, genError = null;
+  if (S.fresh) {
+    const btn = $("startBtn");
+    btn.disabled = true; btn.textContent = "Authoring a fresh problem…";
+    $("readyBtn").disabled = true; $("readyBtn").textContent = "Authoring a fresh problem…";
+    try { generated = await generateProblem(S.topic); }
+    catch (e) { genError = e.message; }
+    btn.disabled = false; btn.textContent = "Start session";
+    $("readyBtn").disabled = false; $("readyBtn").textContent = "I'm ready — start the test";
+  }
+
+  S.sessionId++;
+  S.mode = mode;
+  S.problem = generated || pickProblem(S.topic);
+  markSeen(generated ? S.problem.title : S.problem.id);
+  dbg("startSession", mode, S.problem.title, generated ? "(AI-authored)" : "(bank)");
+  S.elapsedSec = 0; S.remainSec = S.totalSec;
+  S.started = true; S.over = false; S.hints = 3; S.pendingApi = false;
+  S.firedTriggers = new Set(); S.narrationBuffer = []; S.transcript = []; S.history = [];
+  S.lastActivity = now(); S.lastSilenceProbe = now(); S.lastCheckin = now();
+  S.codeAtLastExchange = "";
+  $("code").value = ""; $("chat").innerHTML = "";
+  $("lineCount").textContent = "0 lines";
+  $("hintBtn").disabled = false; $("submitBtn").disabled = false;
+
+  const coach = mode === "coach";
+  $("hintBadge").textContent = coach ? "Guidance: unlimited" : "Hints: 3 left";
+  $("hintBtn").textContent = coach ? "Ask for guidance" : "Request hint";
+  $("submitBtn").textContent = coach ? "End session — study report" : "Submit solution";
+  $("readyBtn").style.display = coach ? "" : "none";
+  $("traceBtn").style.display = coach ? "" : "none";
+  closeTrace(); $("traceCall").value = ""; T.steps = []; T.idx = -1;
+  $("traceCode").innerHTML = ""; $("traceVars").innerHTML = ""; $("tPos").textContent = "run a trace to begin";
+
+  const p = S.problem;
+  $("probTitle").textContent = (coach ? "PRACTICE · " : "") + p.title;
+  $("problem").innerHTML =
+    "<h3>" + p.title + "</h3><p>" + escapeHtml(p.statement) + "</p>" +
+    "<pre>" + escapeHtml(p.examples) + "</pre>" +
+    "<div class='meta'>Constraints: " + escapeHtml(p.constraints) + "<br>Target: " + escapeHtml(p.target) + "</div>";
+
+  $("setup").style.display = "none";
+  $("debrief").style.display = "none";
+  $("interview").style.display = "flex";
+  $("code").focus();
+
+  updateTimer();
+  S.timerHandle = setInterval(tick, 1000);
+  S.watchHandle = setInterval(watch, 4000);
+
+  addMsg("sys", coach ? "Practice session started — untimed. Drill until it's automatic." : "Session started. The clock is running.");
+  if (S.fresh && S.problem.id.startsWith("gen-")) addMsg("sys", "This problem was AI-authored just now — nobody has a memorized solution, including you.");
+  if (genError) addMsg("sys", "Fresh-problem generation failed (" + genError + ") — using the built-in bank instead.");
+  interviewerSpeak(
+    coach
+      ? "SESSION START — coach mode. Greet them briefly, ask how confident they feel about this topic, and ask for their first-instinct classification of the problem before they write anything."
+      : "SESSION START — greet the candidate briefly, confirm they can see the problem, and remind them to think out loud. Do not explain the problem for them.",
+    null, { maxTokens: 250 });
+}
+
+function tick() {
+  if (S.over) return;
+  S.elapsedSec++;
+  if (S.mode === "test") {
+    S.remainSec = S.totalSec - S.elapsedSec;
+    updateTimer();
+    if (S.remainSec === 300 && !S.firedTriggers.has("time-warning")) {
+      S.firedTriggers.add("time-warning");
+      interviewerSpeak("TIME WARNING — 5 minutes remain");
+    }
+    if (S.remainSec <= 0) {
+      addMsg("sys", "Time. Pencils down — submitting what you have.");
+      submitSolution(true);
+    }
+  } else {
+    updateTimer();
+  }
+}
+
+function updateTimer() {
+  const t = $("timer");
+  if (S.mode === "coach") {
+    t.textContent = fmt(S.elapsedSec);
+    t.className = "";
+    return;
+  }
+  t.textContent = fmt(Math.max(0, S.remainSec));
+  t.className = S.remainSec <= 120 ? "crit" : S.remainSec <= 300 ? "warn" : "";
+}
+
+/* Periodic watcher: silence detection, pattern triggers, check-ins */
+function watch() {
+  if (S.over || S.pendingApi) return;
+  const idleMs = now() - S.lastActivity;
+  const code = $("code").value;
+
+  // 1. code pattern triggers (only when there's been recent typing to react to)
+  for (const trig of CODE_TRIGGERS) {
+    if (S.firedTriggers.has(trig.id)) continue;
+    if (code.length > 20 && trig.test(code)) {
+      S.firedTriggers.add(trig.id);
+      dbg("trigger fired:", trig.id);
+      interviewerSpeak("CODE PATTERN OBSERVED", trig.note);
+      return;
+    }
+  }
+
+  // 2. silence: no typing and no narration (coach mode is more patient)
+  const silenceLimit = S.mode === "coach" ? 90000 : 35000;
+  if (idleMs > silenceLimit && now() - S.lastSilenceProbe > 90000) {
+    S.lastSilenceProbe = now();
+    dbg("trigger fired: silence (" + Math.round(idleMs / 1000) + "s idle)");
+    interviewerSpeak("SILENCE — no typing or narration for " + Math.round(idleMs / 1000) + " seconds");
+    return;
+  }
+
+  // 3. gentle check-in every ~6 minutes if nothing else fired
+  if (now() - S.lastCheckin > 360000) {
+    S.lastCheckin = now();
+    interviewerSpeak("CHECK-IN — periodic; react to their current progress" +
+      (S.mode === "coach" ? ", and if they look ready, say so" : ""));
+  }
+}
+
+/* ============================================================
+   Narration (typed + voice)
+   ============================================================ */
+function logNarration(text, viaMic) {
+  const entry = { t: fmt(S.elapsedSec), text };
+  S.narrationBuffer.push(entry);
+  S.transcript.push({ t: entry.t, kind: viaMic ? "narration(voice)" : "narration", text });
+  S.lastActivity = now();
+  addMsg("you", text, viaMic ? "You (voice)" : "You");
+}
+
+$("narration").addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    const text = $("narration").value.trim();
+    if (!text) return;
+    $("narration").value = "";
+    if (text.startsWith("?")) {
+      logNarration(text.slice(1).trim(), false);
+      interviewerSpeak("DIRECT QUESTION FROM CANDIDATE — answer it as an interviewer");
+    } else {
+      logNarration(text, false);
+    }
+  }
+});
+
+$("micBtn").addEventListener("click", () => {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { addMsg("sys", "Voice narration needs Chrome/Edge (Web Speech API not available)."); return; }
+  if (S.micOn) { S.recog.stop(); return; }
+  S.recog = new SR();
+  S.recog.continuous = true;
+  S.recog.interimResults = false;
+  S.recog.lang = "en-US";
+  S.recog.onresult = ev => {
+    for (let i = ev.resultIndex; i < ev.results.length; i++) {
+      if (ev.results[i].isFinal) {
+        const text = ev.results[i][0].transcript.trim();
+        if (text) logNarration(text, true);
+      }
+    }
+  };
+  S.recog.onend = () => { S.micOn = false; $("micBtn").classList.remove("on"); };
+  S.recog.onerror = e => { if (e.error !== "no-speech") addMsg("sys", "Mic error: " + e.error); };
+  S.recog.start();
+  S.micOn = true;
+  $("micBtn").classList.add("on");
+  addMsg("sys", "Mic on — final phrases are logged as narration.");
+});
+
+/* ============================================================
+   Editor activity
+   ============================================================ */
+$("code").addEventListener("input", () => {
+  S.lastActivity = now();
+  const lines = $("code").value.split("\n").length;
+  $("lineCount").textContent = lines + " line" + (lines === 1 ? "" : "s");
+});
+// Tab inserts 4 spaces instead of leaving the editor — the one mercy we allow.
+$("code").addEventListener("keydown", e => {
+  if (e.key === "Tab") {
+    e.preventDefault();
+    const el = e.target, s = el.selectionStart;
+    el.value = el.value.slice(0, s) + "    " + el.value.slice(el.selectionEnd);
+    el.selectionStart = el.selectionEnd = s + 4;
+  }
+});
+
+/* ============================================================
+   Hints & submission
+   ============================================================ */
+$("hintBtn").addEventListener("click", () => {
+  if (S.over) return;
+  if (S.mode === "coach") {
+    S.transcript.push({ t: elapsedStr(), kind: "guidance-request", text: "(guidance requested)" });
+    interviewerSpeak("GUIDANCE REQUEST — coach mode; give real teaching help calibrated to their attempt so far");
+    return;
+  }
+  if (S.hints <= 0) return;
+  S.hints--;
+  $("hintBadge").textContent = "Hints: " + S.hints + " left";
+  if (S.hints === 0) $("hintBtn").disabled = true;
+  S.transcript.push({ t: elapsedStr(), kind: "hint-used", text: "(hint requested)" });
+  interviewerSpeak("HINT REQUEST — candidate is spending one of their hints");
+});
+
+$("readyBtn").addEventListener("click", () => {
+  if (!confirm("End practice and start a timed, graded interview on a fresh problem in the same topic?")) return;
+  startSession("test");
+});
+
+/* ============================================================
+   Syntax checking — real CPython via Pyodide (WASM), lazy-loaded
+   from CDN on first use. Free in coach mode; costs a hint in
+   interview mode (a real interviewer noticing your typo costs
+   you credibility too). Auto-runs at submit and feeds the report.
+   ============================================================ */
+let pyodidePromise = null;
+function loadPyodideOnce() {
+  if (!pyodidePromise) {
+    dbg("loading pyodide (first syntax check — ~10s, cached by the browser afterwards)");
+    pyodidePromise = new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js";
+      s.onload = () => loadPyodide({ indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.4/full/" })
+        .then(py => { dbg("pyodide ready"); resolve(py); }, reject);
+      s.onerror = () => reject(new Error("Pyodide CDN unreachable"));
+      document.head.appendChild(s);
+    });
+    pyodidePromise.catch(() => { pyodidePromise = null; }); // allow retry after a failed load
+  }
+  return pyodidePromise;
+}
+
+async function checkSyntax(code) {
+  const py = await loadPyodideOnce();
+  py.globals.set("src", code);
+  return JSON.parse(py.runPython(`
+import json
+try:
+    compile(src, "solution.py", "exec")
+    _r = {"ok": True}
+except SyntaxError as e:
+    _r = {"ok": False, "line": e.lineno, "msg": e.msg, "text": (e.text or "").rstrip()}
+json.dumps(_r)
+`));
+}
+
+async function runSyntaxCheck(announce) {
+  const code = $("code").value;
+  if (!code.trim()) { if (announce) addMsg("sys", "Nothing to check — the editor is empty."); return { ok: true, empty: true }; }
+  const btn = $("syntaxBtn");
+  btn.disabled = true; btn.textContent = "Checking…";
+  try {
+    const r = await checkSyntax(code);
+    dbg("syntax check:", r);
+    if (announce) {
+      addMsg("sys", r.ok
+        ? "✓ Syntax OK — compiles clean under CPython. (Logic is still on you.)"
+        : "✗ SyntaxError on line " + r.line + ": " + r.msg + (r.text ? "\n    " + r.text : ""));
+      S.transcript.push({ t: elapsedStr(), kind: "syntax-check", text: r.ok ? "clean" : "line " + r.line + ": " + r.msg });
+    }
+    return r;
+  } catch (e) {
+    dbg("syntax checker unavailable:", e.message);
+    if (announce) addMsg("sys", "Syntax checker unavailable (" + e.message + "). You're truly on your own — like the real thing.");
+    return null;
+  } finally {
+    btn.disabled = false; btn.textContent = "Check syntax";
+  }
+}
+
+$("syntaxBtn").addEventListener("click", async () => {
+  if (S.over || !S.started) return;
+  if (S.mode === "test") {
+    if (S.hints <= 0) { addMsg("sys", "No hints left — in interview mode a syntax check costs a hint."); return; }
+    if (!confirm("In interview mode a syntax check costs 1 hint (a real interviewer catching your typo costs you too). Spend it?")) return;
+    S.hints--;
+    $("hintBadge").textContent = "Hints: " + S.hints + " left";
+    if (S.hints === 0) $("hintBtn").disabled = true;
+    S.transcript.push({ t: elapsedStr(), kind: "hint-used", text: "(spent on a syntax check)" });
+  }
+  await runSyntaxCheck(true);
+});
+
+/* ============================================================
+   Step-through tracer (coach mode) — real CPython execution
+   under sys.settrace via Pyodide. Records every line event with
+   a snapshot of locals, then lets you scrub forward/backward
+   watching variables change. This is how you debug WITHOUT
+   print statements or a real debugger: by seeing state evolve
+   — and it trains the hand-tracing you must do in the interview.
+   ============================================================ */
+const TRACER_PY = `
+import sys, io, json
+
+def _fmt(v):
+    try:
+        r = repr(v)
+    except Exception:
+        r = "<unrepresentable>"
+    return r if len(r) <= 140 else r[:137] + "..."
+
+_steps = []
+class _Limit(Exception):
+    pass
+
+def _tracer(frame, event, arg):
+    code = frame.f_code
+    if code.co_filename != "solution.py" or code.co_name == "<module>":
+        return None
+    if event in ("line", "return"):
+        _steps.append({
+            "line": frame.f_lineno,
+            "event": event,
+            "func": code.co_name,
+            "locals": {k: _fmt(v) for k, v in list(frame.f_locals.items()) if not k.startswith("__")},
+            "ret": _fmt(arg) if event == "return" else None,
+        })
+        if len(_steps) >= 500:
+            raise _Limit()
+    return _tracer
+
+_out = io.StringIO()
+_old_stdout = sys.stdout
+_result = None
+_error = None
+try:
+    sys.stdout = _out
+    _ns = {}
+    exec(compile(user_src, "solution.py", "exec"), _ns)
+    _call = compile(call_expr, "<call>", "eval")
+    sys.settrace(_tracer)
+    try:
+        _result = eval(_call, _ns)
+    finally:
+        sys.settrace(None)
+except _Limit:
+    _error = "stopped at 500 steps — likely an infinite loop, or trace a smaller input"
+except SyntaxError as _e:
+    _error = f"SyntaxError line {_e.lineno}: {_e.msg}"
+except Exception as _e:
+    _error = f"{type(_e).__name__}: {_e}"
+finally:
+    sys.stdout = _old_stdout
+
+json.dumps({
+    "steps": _steps,
+    "result": _fmt(_result) if _error is None else None,
+    "stdout": _out.getvalue()[-2000:],
+    "error": _error,
+})
+`;
+
+const T = { steps: [], idx: -1, codeLines: [], result: null, stdout: "", error: null };
+
+function openTrace() {
+  $("tracePanel").style.display = "flex";
+  $("traceCall").focus();
+  if (!$("traceCall").value && S.problem) {
+    // Seed the call box from the problem's first example, e.g. "merge([[1,3],[2,6]]) -> ..."
+    const m = S.problem.examples.match(/^([^\n]+?)\s*->/);
+    if (m) $("traceCall").value = m[1].trim();
+  }
+}
+function closeTrace() {
+  $("tracePanel").style.display = "none";
+}
+
+async function runTrace() {
+  const code = $("code").value;
+  const call = $("traceCall").value.trim();
+  if (!code.trim()) { $("tPos").textContent = "editor is empty"; return; }
+  if (!call) { $("tPos").textContent = "give a call, e.g. merge([[1,3],[2,6]])"; return; }
+  $("traceRun").disabled = true;
+  $("tPos").textContent = "running…";
+  try {
+    const py = await loadPyodideOnce();
+    py.globals.set("user_src", code);
+    py.globals.set("call_expr", call);
+    const res = JSON.parse(py.runPython(TRACER_PY));
+    dbg("trace:", res.steps.length + " steps", res.error ? ("error: " + res.error) : ("→ " + res.result));
+    T.steps = res.steps; T.result = res.result; T.stdout = res.stdout; T.error = res.error;
+    T.codeLines = code.split("\n");
+    renderTraceCode();
+    if (!T.steps.length) {
+      $("tPos").textContent = T.error || "no steps recorded (did the call reach your function?)";
+      $("traceVars").innerHTML = ""; renderTraceOut();
+    } else {
+      gotoStep(0);
+    }
+    // Let the coach know what just happened — it surfaces in the next exchange.
+    S.narrationBuffer.push({ t: fmt(S.elapsedSec), text: "(ran a step-through trace of `" + call + "` — " + T.steps.length + " steps, " + (T.error ? "ended in " + T.error : "returned " + T.result) + ")" });
+  } catch (e) {
+    $("tPos").textContent = "tracer unavailable: " + e.message;
+    dbg("trace failed:", e.message);
+  } finally {
+    $("traceRun").disabled = false;
+  }
+}
+
+function renderTraceCode() {
+  $("traceCode").innerHTML = "";
+  T.codeLines.forEach((ln, i) => {
+    const div = document.createElement("div");
+    div.className = "tline"; div.id = "tl" + (i + 1);
+    const no = document.createElement("span");
+    no.className = "lno"; no.textContent = i + 1;
+    div.appendChild(no);
+    div.appendChild(document.createTextNode(ln || " "));
+    $("traceCode").appendChild(div);
+  });
+}
+
+function gotoStep(i) {
+  if (!T.steps.length) return;
+  T.idx = Math.max(0, Math.min(i, T.steps.length - 1));
+  const st = T.steps[T.idx];
+  const prev = T.idx > 0 ? T.steps[T.idx - 1].locals : {};
+  document.querySelectorAll("#traceCode .cur").forEach(e => e.classList.remove("cur"));
+  const lineEl = $("tl" + st.line);
+  if (lineEl) { lineEl.classList.add("cur"); lineEl.scrollIntoView({ block: "nearest" }); }
+  $("tPos").textContent = "step " + (T.idx + 1) + "/" + T.steps.length + " · " + st.func + "() · line " + st.line + (st.event === "return" ? " · returns " + st.ret : "");
+  const vars = $("traceVars");
+  vars.innerHTML = "";
+  const names = Object.keys(st.locals);
+  if (!names.length) vars.innerHTML = "<span style='color:var(--dim)'>no locals yet</span>";
+  for (const k of names) {
+    const row = document.createElement("div");
+    row.className = "vrow" + (prev[k] !== st.locals[k] ? " vchanged" : "");
+    const n = document.createElement("span"); n.className = "vname"; n.textContent = k;
+    const v = document.createElement("span"); v.className = "vval"; v.textContent = st.locals[k];
+    row.append(n, v);
+    vars.appendChild(row);
+  }
+  renderTraceOut();
+}
+
+function renderTraceOut() {
+  const bits = [];
+  if (T.idx === T.steps.length - 1 || !T.steps.length) {
+    if (T.error) bits.push("✗ " + T.error);
+    else if (T.result != null) bits.push("→ returns " + T.result);
+  }
+  if (T.stdout) bits.push("stdout: " + T.stdout);
+  $("traceOut").textContent = bits.join("\n") || "";
+  $("traceOut").style.display = bits.length ? "" : "none";
+}
+
+$("traceBtn").addEventListener("click", () => {
+  if ($("tracePanel").style.display === "flex") closeTrace(); else openTrace();
+});
+$("traceClose").addEventListener("click", closeTrace);
+$("traceRun").addEventListener("click", runTrace);
+$("traceCall").addEventListener("keydown", e => { if (e.key === "Enter") runTrace(); });
+$("tStart").addEventListener("click", () => gotoStep(0));
+$("tPrev").addEventListener("click", () => gotoStep(T.idx - 1));
+$("tNext").addEventListener("click", () => gotoStep(T.idx + 1));
+$("tEnd").addEventListener("click", () => gotoStep(T.steps.length - 1));
+document.addEventListener("keydown", e => {
+  if ($("tracePanel").style.display !== "flex") return;
+  const tag = (e.target.tagName || "").toLowerCase();
+  if (tag === "textarea" || tag === "input") return; // don't hijack typing
+  if (e.key === "ArrowRight") { e.preventDefault(); gotoStep(T.idx + 1); }
+  if (e.key === "ArrowLeft") { e.preventDefault(); gotoStep(T.idx - 1); }
+});
+
+$("submitBtn").addEventListener("click", () => submitSolution(false));
+
+async function submitSolution(timedOut) {
+  if (S.over) return;
+  S.over = true;
+  const sess = S.sessionId;
+  const coach = S.mode === "coach";
+  const hist = S.history;
+  clearInterval(S.timerHandle);
+  clearInterval(S.watchHandle);
+  if (S.micOn) S.recog.stop();
+  $("hintBtn").disabled = true; $("submitBtn").disabled = true; $("readyBtn").disabled = true;
+  addMsg("sys", coach
+    ? "Wrapping up practice — building your study report. This takes a minute…"
+    : "Evaluating at a Staff bar — hand-tracing your code. This takes a minute…");
+
+  const transcriptText = S.transcript
+    .map(e => `[${e.t}] (${e.kind}) ${e.text}`)
+    .join("\n") || "(empty — candidate never narrated)";
+
+  // Objective compile check so the grader doesn't have to guess about syntax.
+  const syn = await runSyntaxCheck(false);
+  const synLine = syn == null ? "not run (checker unavailable) — judge syntax yourself"
+    : syn.empty ? "n/a (empty editor)"
+    : syn.ok ? "PASSES — compiles clean under CPython 3.12"
+    : `FAILS — SyntaxError line ${syn.line}: ${syn.msg}`;
+
+  const payload = `[TRIGGER: SUBMIT${timedOut ? " — TIME EXPIRED, auto-submitted" : ""}]
+[ELAPSED: ${elapsedStr()}] [HINTS USED: ${coach ? "n/a — coach mode" : (3 - S.hints) + " of 3"}]
+[OBJECTIVE SYNTAX CHECK: ${synLine}]
+[FINAL CODE]
+${$("code").value || "(editor is empty)"}
+[FULL SESSION TRANSCRIPT — narration and your interruptions, with timestamps]
+${transcriptText}
+
+${coach ? "Produce the full structured study report now, per your instructions." : "Produce the full structured debrief now, per your instructions."}`;
+
+  try {
+    hist.push({ role: "user", content: payload });
+    const body = {
+      model: "claude-opus-4-8",
+      max_tokens: 4000,
+      thinking: { type: "adaptive" },
+      output_config: { effort: "high" },
+      system: [{ type: "text", text: systemPrompt(), cache_control: { type: "ephemeral" } }],
+      messages: hist,
+    };
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": S.apiKey,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true",
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(res.status + ": " + (err?.error?.message || res.statusText));
+    }
+    const data = await res.json();
+    const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("\n").trim();
+    if (sess !== S.sessionId) return; // a new session started while this was in flight
+    showDebrief(text, coach);
+  } catch (e) {
+    if (sess !== S.sessionId) return;
+    addMsg("sys", "Report failed — " + e.message + ". Your session is preserved; press the button again to retry.");
+    hist.pop();
+    S.over = false;
+    $("submitBtn").disabled = false; $("hintBtn").disabled = S.mode === "test" && S.hints === 0; $("readyBtn").disabled = false;
+    S.timerHandle = setInterval(tick, 1000);
+    S.watchHandle = setInterval(watch, 4000);
+  }
+}
+
+let lastDebriefMd = "";
+function showDebrief(md, coach) {
+  lastDebriefMd = md;
+  recordSession(md, coach);
+  $("interview").style.display = "none";
+  $("debrief").style.display = "block";
+  document.querySelector("#debrief h1").textContent = coach ? "Study Report" : "Debrief";
+  $("readyBtn").disabled = false;
+  $("cardFromSessionBtn").style.display = "";
+  const actions = coach
+    ? "<p style='margin-bottom:18px;color:var(--dim);font-style:italic'>When the report says you're ready, start a new session in Interview mode — same topic, fresh problem, real clock.</p>"
+    : "";
+  $("debriefBody").innerHTML = actions + mdToHtml(md);
+  window.scrollTo(0, 0);
+}
+
+$("cardFromSessionBtn").addEventListener("click", async () => {
+  const btn = $("cardFromSessionBtn");
+  btn.disabled = true; btn.textContent = "Distilling…";
+  try {
+    const p = S.problem;
+    const source = `THE PROBLEM THE CANDIDATE JUST FACED:
+${p.title}
+${p.statement}
+Examples:
+${p.examples}
+
+THE CANDIDATE'S FINAL CODE:
+${$("code").value || "(empty)"}
+
+THE GRADER'S REPORT ON THEIR PERFORMANCE:
+${lastDebriefMd}
+
+Build the card around the underlying PATTERN this problem exercises (not this specific problem), and fold the report's observed weaknesses into "Classic pitfalls" as personally emphasized items.`;
+    const title = await distillRequest(p.title, source, "distill:from-session");
+    btn.textContent = "Saved “" + title + "” ✓";
+  } catch (e) {
+    btn.textContent = "Failed — retry";
+    btn.disabled = false;
+    return;
+  }
+  setTimeout(() => { btn.textContent = "Distill this into a pattern card"; btn.disabled = false; }, 2500);
+});
+
+$("againBtn").addEventListener("click", () => {
+  $("debrief").style.display = "none";
+  $("setup").style.display = "block";
+  renderHistory();
+});
+$("copyBtn").addEventListener("click", () => {
+  navigator.clipboard.writeText(lastDebriefMd);
+  $("copyBtn").textContent = "Copied ✓";
+  setTimeout(() => $("copyBtn").textContent = "Copy debrief", 1500);
+});
+
+/* ============================================================
+   Tiny markdown renderer (headers, bold, code, lists) — enough
+   for the debrief, no external libs.
+   ============================================================ */
+function escapeHtml(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function mdToHtml(md) {
+  const lines = md.split("\n");
+  let html = "", inCode = false, inList = false;
+  const closeList = () => { if (inList) { html += "</ul>"; inList = false; } };
+  for (const raw of lines) {
+    if (raw.trim().startsWith("```")) {
+      if (inCode) { html += "</code></pre>"; inCode = false; }
+      else { closeList(); html += "<pre><code>"; inCode = true; }
+      continue;
+    }
+    if (inCode) { html += escapeHtml(raw) + "\n"; continue; }
+    let line = escapeHtml(raw);
+    line = line.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+               .replace(/`([^`]+)`/g, "<code>$1</code>");
+    if (/^###\s/.test(line)) { closeList(); html += "<h3>" + line.slice(4) + "</h3>"; }
+    else if (/^##\s/.test(line)) { closeList(); html += "<h2>" + line.slice(3) + "</h2>"; }
+    else if (/^#\s/.test(line)) { closeList(); html += "<h2>" + line.slice(2) + "</h2>"; }
+    else if (/^\s*[-*]\s/.test(line)) {
+      if (!inList) { html += "<ul>"; inList = true; }
+      html += "<li>" + line.replace(/^\s*[-*]\s/, "") + "</li>";
+    }
+    else if (line.trim() === "") { closeList(); }
+    else { closeList(); html += "<p>" + line + "</p>"; }
+  }
+  if (inCode) html += "</code></pre>";
+  closeList();
+  return html;
+}
+
+/* ============================================================
+   Pattern library — distilled study cards, stored locally.
+   Feed it a NeetCode transcript (YouTube → Show transcript →
+   copy/paste), an article, your own notes — or nothing, and
+   Claude writes the canonical card from scratch.
+   ============================================================ */
+function getCards() { try { return JSON.parse(localStorage.getItem("baremetal_cards") || "[]"); } catch { return []; } }
+function saveCards(cards) { localStorage.setItem("baremetal_cards", JSON.stringify(cards)); }
+
+function renderCardList() {
+  const cards = getCards();
+  const el = $("cardList");
+  if (!cards.length) { el.innerHTML = "<em style='color:var(--dim)'>No cards yet.</em>"; return; }
+  el.innerHTML = "";
+  cards.forEach(card => {
+    const row = document.createElement("div");
+    row.className = "cardItem";
+    const name = document.createElement("span");
+    name.className = "cname"; name.textContent = card.title;
+    const view = document.createElement("button"); view.textContent = "Study";
+    view.onclick = () => viewCard(card);
+    const del = document.createElement("button"); del.textContent = "✕"; del.title = "Delete card";
+    del.onclick = () => { if (confirm("Delete card “" + card.title + "”?")) { saveCards(getCards().filter(c => c.id !== card.id)); renderCardList(); } };
+    row.append(name, view, del);
+    el.appendChild(row);
+  });
+}
+
+function viewCard(card) {
+  lastDebriefMd = card.md;
+  $("setup").style.display = "none";
+  $("interview").style.display = "none";
+  $("debrief").style.display = "block";
+  document.querySelector("#debrief h1").textContent = card.title;
+  $("cardFromSessionBtn").style.display = "none"; // it's already a card
+  $("debriefBody").innerHTML = mdToHtml(card.md);
+  window.scrollTo(0, 0);
+}
+
+/* Gemini watches a YouTube video (public URLs, no download needed) and
+   returns dense study notes, which then feed the Claude distiller. */
+async function geminiWatch(url, key) {
+  const t0 = now();
+  dbg("→ Gemini watch", url);
+  // gemini-flash-latest tracks the current GA Flash model (3.5 Flash as of mid-2026),
+  // so this doesn't rot when Google rotates model versions.
+  const res = await fetch(
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=" + encodeURIComponent(key),
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { fileData: { fileUri: url } },
+            { text: `This is a coding-interview tutorial video. Extract thorough study notes:
+1. The pattern/algorithm being taught, and the teacher's memorable framings or analogies — quote catchy phrasing verbatim.
+2. The full code solution shown on screen, transcribed exactly as written.
+3. Each example the teacher traces, and how the variables/state evolve step by step.
+4. Every pitfall or "people get this wrong" moment called out.
+5. The complexity analysis as stated.
+Plain text notes. Completeness over brevity.` },
+          ],
+        }],
+      }),
+    });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    dbg("✗ Gemini", res.status, err?.error?.message || res.statusText);
+    throw new Error("Gemini " + res.status + ": " + (err?.error?.message || res.statusText));
+  }
+  const data = await res.json();
+  const text = (data.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("").trim();
+  dbg("← Gemini", (now() - t0) + "ms", text.length + " chars of notes");
+  if (!text) throw new Error("Gemini returned no notes — only PUBLIC videos work (not private/unlisted), and the free tier caps at ~8h of YouTube/day");
+  return "NOTES EXTRACTED FROM THE VIDEO (by Gemini, watching it directly):\n" + text;
+}
+
+/* Core distiller — shared by the setup-screen form and the post-debrief button. */
+async function distillRequest(topic, source, label) {
+  const data = await apiRequest({
+    model: "claude-opus-4-8",
+    max_tokens: 3000,
+    thinking: { type: "adaptive" },
+    output_config: { effort: "high" },
+    messages: [{
+      role: "user",
+      content: `Distill a coding-interview pattern into a compact study card for a Staff-level engineer rebuilding assistant-free coding muscle memory (no autocomplete, no execution, plain-text editor, think-aloud interviews).
+
+PATTERN: ${topic || "(infer it from the source material)"}
+SOURCE MATERIAL: ${source ? "\n---\n" + source + "\n---\nDistill THIS explanation — preserve any memorable framing the teacher used, correct anything wrong, and keep the card self-contained." : "(none — write the canonical card from your own knowledge)"}
+
+Output markdown and nothing else, in exactly this structure:
+# <Pattern name>
+## Recognition triggers
+The exact phrases in a problem statement that should fire this pattern (e.g. "sum to target" → hash map). 3-6 bullets, phrase → pattern.
+## The archetype
+ONE idiomatic Python skeleton, <= 15 lines, in a code block. This is the code to be able to write from memory, cold, in under 5 minutes.
+## Why each line exists
+Walk the skeleton's logic in a few bullets, focused on the lines people get wrong: bounds, base cases, update order, what must be initialized before the loop.
+## Classic pitfalls
+The specific mistakes made when coding this WITHOUT AI assistance — off-by-ones, wrong sort key, mutating while iterating, forgetting the empty case.
+## Trace it once
+One small worked example traced through the archetype's variable state, compact steps or a small table.
+## Drill next
+3 named problems in escalating difficulty that exercise this pattern.`,
+    }],
+  }, label);
+  const md = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("\n").trim();
+  const title = (md.match(/^#\s+(.+)$/m) || [])[1] || topic || "Pattern card";
+  const cards = getCards();
+  cards.push({ id: Date.now(), title, md, created: new Date().toISOString() });
+  saveCards(cards);
+  renderCardList();
+  return title;
+}
+
+async function distillCard() {
+  const key = $("apiKey").value.trim();
+  if (!key) { $("distillStatus").textContent = "Enter your API key above first."; return; }
+  localStorage.setItem("baremetal_api_key", key);
+  S.apiKey = key;
+  const topic = $("distillTopic").value.trim();
+  const ytUrl = $("ytUrl").value.trim();
+  let src = $("distillSrc").value.trim().slice(0, 80000);
+  if (!topic && !src && !ytUrl) { $("distillStatus").textContent = "Name the pattern, paste material, or give a YouTube URL."; return; }
+  $("distillBtn").disabled = true;
+  try {
+    if (ytUrl) {
+      const gkey = $("geminiKey").value.trim();
+      if (!gkey) { $("distillStatus").textContent = "A Gemini API key is needed to watch YouTube (aistudio.google.com/apikey)."; return; }
+      localStorage.setItem("baremetal_gemini_key", gkey);
+      $("distillStatus").textContent = "Gemini is watching the video… (roughly real-time-ish for short videos)";
+      const notes = await geminiWatch(ytUrl, gkey);
+      src = [notes, src].filter(Boolean).join("\n\n");
+    }
+    $("distillStatus").textContent = "Claude is distilling the card… (can take a minute)";
+    const title = await distillRequest(topic, src, "distill:" + (topic || ytUrl || "from-source"));
+    $("distillTopic").value = ""; $("distillSrc").value = ""; $("ytUrl").value = "";
+    $("distillStatus").textContent = "Saved “" + title + "” ✓ — it's in your library above.";
+  } catch (e) {
+    $("distillStatus").textContent = "Failed: " + e.message;
+  } finally {
+    $("distillBtn").disabled = false;
+  }
+}
+
+/* ============================================================
+   Pattern Sprint — rapid classify-the-problem drills. Reading a
+   disguised statement and naming the pattern BEFORE writing any
+   code is the highest-leverage interview skill; this trains it
+   in 8-round bursts.
+   ============================================================ */
+const SPRINT_PATTERNS = [
+  "Hash map / set", "Intervals (sort + sweep)", "BFS on grid/graph", "DFS / backtracking",
+  "Sliding window", "Two pointers", "Heap / priority queue", "Prefix sums",
+  "Binary search", "Topological sort / cycle detection", "Monotonic stack", "In-place partition (Dutch flag)",
+];
+const SP = { rounds: [], idx: 0, score: 0 };
+
+async function startSprint() {
+  const key = $("apiKey").value.trim();
+  if (!key) { $("sprintStatus").textContent = "Enter your API key above first."; return; }
+  localStorage.setItem("baremetal_api_key", key);
+  S.apiKey = key;
+  $("sprintBtn").disabled = true;
+  $("sprintStatus").textContent = "Writing 8 fresh rounds…";
+  try {
+    const data = await apiRequest({
+      model: "claude-opus-4-8",
+      max_tokens: 4000,
+      output_config: {
+        effort: "high",
+        format: {
+          type: "json_schema",
+          schema: {
+            type: "object",
+            properties: {
+              rounds: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    statement: { type: "string" },
+                    options: { type: "array", items: { type: "string" } },
+                    answer_index: { type: "integer" },
+                    tell: { type: "string" },
+                  },
+                  required: ["statement", "options", "answer_index", "tell"],
+                  additionalProperties: false,
+                },
+              },
+            },
+            required: ["rounds"],
+            additionalProperties: false,
+          },
+        },
+      },
+      messages: [{
+        role: "user",
+        content: `Generate 8 rounds of a pattern-recognition drill for coding interviews.
+
+Each round: a SHORT (1-3 sentence) problem statement with a fresh, disguised real-world framing — the underlying pattern must be one of:
+${SPRINT_PATTERNS.join(" · ")}
+
+Rules:
+- The "tell" — the phrase that gives the pattern away — must be present but buried in natural wording, never the pattern's textbook phrasing.
+- "options": exactly 4 pattern names from the list above — 1 correct, 3 plausible near-misses (e.g. sliding window vs two pointers; BFS vs DFS; heap vs sort). Use the exact names from the list.
+- "answer_index": 0-3, the correct option. Vary it across rounds — do not favor one position.
+- "tell": one sentence naming the giveaway phrase and why it implies the pattern.
+- Cover at least 6 distinct patterns across the 8 rounds; include at least one intervals round.
+- Escalate subtlety: rounds 1-3 fairly clear, 6-8 genuinely tricky (e.g. negative numbers ruling OUT sliding window in favor of prefix sums).`,
+      }],
+    }, "patternSprint");
+    const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("").trim();
+    SP.rounds = JSON.parse(text).rounds;
+    SP.idx = 0; SP.score = 0;
+    $("sprintStatus").textContent = "";
+    $("setup").style.display = "none";
+    $("sprint").style.display = "flex";
+    showRound();
+  } catch (e) {
+    $("sprintStatus").textContent = "Failed: " + e.message;
+  } finally {
+    $("sprintBtn").disabled = false;
+  }
+}
+
+function showRound() {
+  const r = SP.rounds[SP.idx];
+  $("sprintScore").textContent = SP.score + " right · round " + (SP.idx + 1) + " of " + SP.rounds.length;
+  $("sprintQ").textContent = r.statement;
+  $("sprintFb").innerHTML = "";
+  $("sprintNext").style.display = "none";
+  const opts = $("sprintOpts");
+  opts.innerHTML = "";
+  r.options.forEach((opt, i) => {
+    const b = document.createElement("button");
+    b.textContent = opt;
+    b.onclick = () => answerRound(i, b);
+    opts.appendChild(b);
+  });
+}
+
+function answerRound(i, btn) {
+  const r = SP.rounds[SP.idx];
+  const buttons = [...$("sprintOpts").children];
+  buttons.forEach(b => b.disabled = true);
+  buttons[r.answer_index].classList.add("right");
+  const correct = i === r.answer_index;
+  if (correct) SP.score++;
+  else btn.classList.add("wrong");
+  $("sprintScore").textContent = SP.score + " right · round " + (SP.idx + 1) + " of " + SP.rounds.length;
+  $("sprintFb").innerHTML = (correct ? "<strong>✓ Right.</strong> " : "<strong>✗ It's " + escapeHtml(r.options[r.answer_index]) + ".</strong> ")
+    + escapeHtml(r.tell);
+  $("sprintNext").textContent = SP.idx + 1 >= SP.rounds.length ? "Finish" : "Next round";
+  $("sprintNext").style.display = "";
+}
+
+function nextRound() {
+  SP.idx++;
+  if (SP.idx >= SP.rounds.length) {
+    const h = getHistory();
+    h.push({ when: new Date().toISOString().slice(0, 10), mode: "sprint", title: "Pattern Sprint", verdict: SP.score + "/" + SP.rounds.length });
+    localStorage.setItem("baremetal_history", JSON.stringify(h.slice(-40)));
+    $("sprintQ").textContent = "Sprint over: " + SP.score + " of " + SP.rounds.length + "."
+      + (SP.score >= 7 ? " Recognition is sharp — go spend it in Interview mode." :
+         SP.score >= 5 ? " Solid. The misses tell you which pattern cards to study next." :
+         " Study the cards for the ones you missed, then run another sprint.");
+    $("sprintOpts").innerHTML = "";
+    $("sprintFb").innerHTML = "";
+    $("sprintNext").style.display = "none";
+    return;
+  }
+  showRound();
+}
+
+$("sprintBtn").addEventListener("click", startSprint);
+$("sprintNext").addEventListener("click", nextRound);
+$("sprintQuit").addEventListener("click", () => {
+  $("sprint").style.display = "none";
+  $("setup").style.display = "block";
+  renderHistory();
+});
+
+/* ============================================================
+   Session history — the streak that keeps you coming back.
+   ============================================================ */
+function getHistory() { try { return JSON.parse(localStorage.getItem("baremetal_history") || "[]"); } catch { return []; } }
+function recordSession(md, coach) {
+  const verdict = (md.match(/Strong Hire|No Hire|Lean Hire|Hire|Ready for a timed test|Almost[^.\n]*|Not yet/i) || ["—"])[0];
+  const h = getHistory();
+  h.push({ when: new Date().toISOString().slice(0, 10), mode: coach ? "coach" : "test", title: S.problem.title, verdict });
+  localStorage.setItem("baremetal_history", JSON.stringify(h.slice(-40)));
+}
+function renderHistory() {
+  const h = getHistory();
+  if (!h.length) { $("historySec").style.display = "none"; return; }
+  $("historySec").style.display = "";
+  $("historyList").innerHTML = h.slice(-8).reverse().map(e =>
+    `<div class="histItem"><span class="hdate">${e.when}</span><span class="hmode">${e.mode}</span><span class="cname">${escapeHtml(e.title)}</span><span class="hverdict">${escapeHtml(e.verdict)}</span></div>`
+  ).join("");
+}
+
+/* ============================================================
+   Boot
+   ============================================================ */
+(function init() {
+  const saved = localStorage.getItem("baremetal_api_key");
+  if (saved) {
+    $("apiKey").value = saved;
+    $("keyStatus").textContent = "Key loaded from this browser's localStorage.";
+    $("keyStatus").style.color = "var(--good)";
+  }
+  const gkey = localStorage.getItem("baremetal_gemini_key");
+  if (gkey) $("geminiKey").value = gkey;
+  // Just-in-time credential ask: the Gemini key field only appears once a YouTube URL is entered.
+  $("ytUrl").addEventListener("input", () => {
+    $("geminiKeyRow").style.display = $("ytUrl").value.trim() ? "" : "none";
+  });
+  $("startBtn").addEventListener("click", startFromSetup);
+  $("distillBtn").addEventListener("click", distillCard);
+  $("dbgClear").addEventListener("click", () => { $("debugLog").innerHTML = ""; });
+  $("soundBtn").textContent = localStorage.getItem("baremetal_sound") === "1" ? "🔔" : "🔕";
+  $("soundBtn").addEventListener("click", () => {
+    const on = localStorage.getItem("baremetal_sound") !== "1";
+    localStorage.setItem("baremetal_sound", on ? "1" : "0");
+    $("soundBtn").textContent = on ? "🔔" : "🔕";
+    if (on) chime();
+  });
+  if (DBG.on) dbgPanel(true);
+  renderCardList();
+  renderHistory();
+  dbg("boot ok — problems in bank:", PROBLEMS.length, "cards:", getCards().length, "seen:", getSeen().length, "history:", getHistory().length);
+})();
+</script>
+</body>
+</html>
