@@ -45,6 +45,48 @@ interview.
   spot), graphs & grids, hash tables, strings & sliding window, sorting,
   heaps. All LC-medium, ~25–30 line solutions.
 
+## Syntax feedback (without breaking the point)
+
+The editor stays bare while you type — that's the training. But real CPython
+syntax checking is available via Pyodide (Python compiled to WASM, lazy-loaded
+from CDN on first use):
+
+- **Coach mode:** the "Check syntax" button is free. Use it liberally while
+  drilling.
+- **Interview mode:** a syntax check costs one hint — an interviewer catching
+  your typo costs you credibility too.
+- **At submit:** the code is always compile-checked automatically and the
+  objective result (`PASSES` / `SyntaxError line N: ...`) is fed to the
+  grader, so the debrief never has to guess whether your code parses.
+
+## Where problems come from
+
+- **Built-in bank:** 15 curated LC-mediums tagged by topic, with intervals
+  weighted as the cold spot. Problems you've seen are tracked in localStorage
+  and not repeated until the topic's pool is exhausted.
+- **Fresh AI-authored problems:** check "Author a fresh problem" on setup and
+  Claude writes an original LC-medium variant for your topic via structured
+  outputs — a disguised classic pattern in a fresh framing, so you can't
+  pattern-match on a memorized title. It's told which problems you've seen
+  recently and avoids resembling them. Falls back to the bank on any failure.
+
+## Pattern library (recognize the patterns)
+
+The setup screen has a card library. "Distill a new pattern card" takes any
+source material — a NeetCode video transcript (YouTube → ⋯ → Show transcript →
+copy/paste), an article, your own notes — or nothing at all, and produces a
+compact study card: recognition triggers (statement phrase → pattern), a
+≤15-line archetype to memorize, why each line exists, classic pitfalls, one
+hand-trace, and three drill problems. Cards persist in localStorage.
+
+## Debugging the app itself
+
+Open with `index.html?debug=1` (or press **Ctrl+Shift+D** any time) for a live
+debug panel: every API call with latency and token usage (input / cached /
+output), every trigger firing (silence, code patterns), problem selection,
+Pyodide load state, and network failures. Everything is also mirrored to the
+browser DevTools console via `console.debug`.
+
 ## Run it
 
 No build, no dependencies, no server:
