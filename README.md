@@ -1,14 +1,32 @@
-# Bare Metal — Assistant-Free Interview Trainer
+# Bare Metal — Code & Learn DSA, Assistant-Free
 
-An interview simulator that uses AI to enforce *not* using AI. You solve an
-LC-medium problem in a deliberately bare `<textarea>` — no syntax highlighting,
-no bracket matching, no autocomplete, no execution — while a Claude-powered
-interviewer watches your code and narration in real time and interrupts you
-the way a real interviewer would.
+A place to code and learn data structures & algorithms without AI crutches:
+drill pattern recognition, step through your code variable by variable, get
+coached by an AI that teaches in practice and interrogates under a clock. You
+work in a deliberately bare `<textarea>` — no syntax highlighting, no bracket
+matching, no autocomplete — while a Claude-powered interviewer/coach watches
+your code and narration in real time.
 
 Built for engineers whose daily Python is written with Claude Code / Cursor /
-Copilot and who need to rebuild "code author" muscle memory for a shared-notebook
-interview.
+Copilot and who need to rebuild "code author" muscle memory.
+
+## Learn loop
+
+1. **Pattern Sprint** (setup screen) — 8 rapid rounds: read a freshly-generated,
+   disguised problem statement and name the pattern before you'd write any
+   code. Feedback names the buried "tell" every round; scores land in your
+   history.
+2. **Coach mode** — untimed practice with teaching, unlimited guidance, and a
+   **step-through debugger**: give a call like `merge([[1,3],[2,6]])` and your
+   code runs under real CPython (`sys.settrace` via Pyodide), recording every
+   line. Scrub forward/back with arrow keys, watch each variable change
+   (changed values highlighted), see stdout and the return value. Capped at
+   500 steps so infinite loops just stop. The coach sees when you trace and
+   drills the discipline: predict first, then run — because Interview mode has
+   no tracer.
+3. **Interview mode** — prove it under the clock.
+4. **Pattern cards** — distill what you learned (from a session, a YouTube
+   video via Gemini, or pasted notes) into reviewable archetypes.
 
 ## Two modes
 
